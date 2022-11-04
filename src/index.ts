@@ -59,7 +59,7 @@ export = (app: Probot) => {
         conclusion: "success",
         completed_at: new Date(),
         output: {
-          title: "Labels are properly applied",
+          summmary: "Labels are properly applied",
         },
       })
     );
@@ -82,7 +82,7 @@ export = (app: Probot) => {
         name: "Auto label QA",
         conclusion: "success",
         output: {
-          title: "Labels are properly applied",
+          summmary: "Labels are properly applied",
         },
         check_run_id: checkRuns.data.check_runs[0].id,
       })
