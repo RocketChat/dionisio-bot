@@ -60,7 +60,7 @@ export = (app: Probot) => {
         completed_at: new Date(),
         output: {
           title: "Labels are properly applied",
-          summmary: "Labels are properly applied",
+          summary: "Labels are properly applied",
         },
       })
     );
@@ -84,7 +84,7 @@ export = (app: Probot) => {
         conclusion: "success",
         output: {
           title: "Labels are properly applied",
-          summmary: "Labels are properly applied",
+          summary: "Labels are properly applied",
         },
         check_run_id: checkRuns.data.check_runs[0].id,
       })
