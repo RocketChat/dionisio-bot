@@ -39,6 +39,7 @@ export const applyLabels = async (
       return;
     }
 
+    console.log("DEBUG->", originalLabels, labels);
     await context.octokit.issues.setLabels({
       ...context.issue(),
       labels,
