@@ -11,19 +11,47 @@ export = (app: Probot) => {
     ],
     async (context) => {
       applyLabels(context);
+
+      const { owner, repo } = context.repo();
+
+      const suites = await context.octokit.checks.listSuitesForRef({
+        owner,
+        repo,
+        ref: context.payload.pull_request.head.ref,
+      });
+
+      const suite = suites.data.check_suites.find((suite) => {
+        return suite.app?.name === "dionisio-bot";
+      });
+
+      if (!suite) {
+        return;
+      }
+
+      console.log("suite.id", suite.id);
+      try {
+        await context.octokit.checks.rerequestSuite({
+          owner,
+          repo,
+          check_suite_id: suite.id,
+        });
+      } catch (error) {
+        console.log(error);
+      }
     }
   );
 
   app.on(["check_suite.requested"], async function check(context) {
     const startTime = new Date();
-    console.log("check_suite started at", startTime);
     // Do stuff
     const { head_branch: headBranch, head_sha: headSha } =
       context.payload.check_suite;
 
-    return context.octokit.checks.create(
+    context.payload;
+
+    context.octokit.checks.create(
       context.repo({
-        name: "Rocket.Chat PR Check - by Dionisio",
+        name: "Auto label QA",
         head_branch: headBranch,
         head_sha: headSha,
         status: "completed",
@@ -31,20 +59,33 @@ export = (app: Probot) => {
         conclusion: "success",
         completed_at: new Date(),
         output: {
-          title: "All the Tests are ok!",
-          summary: `
-          - :checkered_flag: Pull Request title follows the conventions
-          - :checkered_flag: Labels are properly set
-          `,
+          title: "Labels are properly applied",
         },
       })
     );
   });
+  app.on(["check_suite.rerequested"], async function check(context) {
+    console.log(
+      "check_suite.rerequested started at",
+      context.payload.check_suite.id
+    );
+    // Do stuff
 
-  app.on("issues.opened", async (context) => {
-    const issueComment = context.issue({
-      body: "Perfect",
-    });
-    await context.octokit.issues.createComment(issueComment);
+    const checkRuns = await context.octokit.checks.listForSuite(
+      context.repo({
+        check_suite_id: context.payload.check_suite.id,
+      })
+    );
+
+    context.octokit.checks.update(
+      context.repo({
+        name: "Auto label QA",
+        conclusion: "success",
+        output: {
+          title: "Labels are properly applied",
+        },
+        check_run_id: checkRuns.data.check_runs[0].id,
+      })
+    );
   });
 };
