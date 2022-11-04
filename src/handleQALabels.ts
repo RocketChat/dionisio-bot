@@ -39,11 +39,10 @@ export const applyLabels = async (
       return;
     }
 
-    await context.octokit.issues.setLabels(
-      context.issue({
-        labels,
-      })
-    );
+    await context.octokit.issues.setLabels({
+      ...context.issue(),
+      labels,
+    });
   } catch (error) {
     console.log(error);
     // error instanceof Error && core.setFailed(error.message);
