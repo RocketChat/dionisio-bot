@@ -28,7 +28,6 @@ export = (app: Probot) => {
         return;
       }
 
-      console.log("suite.id", suite.id);
       try {
         await context.octokit.checks.rerequestSuite({
           owner,
@@ -66,12 +65,6 @@ export = (app: Probot) => {
     );
   });
   app.on(["check_suite.rerequested"], async function check(context) {
-    console.log(
-      "check_suite.rerequested started at",
-      context.payload.check_suite.id
-    );
-    // Do stuff
-
     const checkRuns = await context.octokit.checks.listForSuite(
       context.repo({
         check_suite_id: context.payload.check_suite.id,
