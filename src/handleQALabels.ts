@@ -14,6 +14,8 @@ export const applyLabels = async (
     const hasConflicts =
       context.payload.pull_request.mergeable_state === "dirty";
 
+    const { mergeable } = context.payload.pull_request;
+
     const originalLabels = issue.labels.map((label) => label.name);
     const tested = Boolean(originalLabels.includes("stat: QA tested"));
     const skipped = Boolean(originalLabels.includes("stat: QA skipped"));
@@ -39,7 +41,7 @@ export const applyLabels = async (
       }
 
       if (label === "stat: ready to merge") {
-        return !hasConflicts && (skipped || tested);
+        return !hasConflicts && (skipped || tested) && mergeable;
       }
       return true;
     });
