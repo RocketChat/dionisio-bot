@@ -1,5 +1,12 @@
 import { Context } from "probot";
 
+const {
+  REQUIRE_REGRESSION = 'false',
+  REQUIRE_MILESTONE = '',
+} = process.env;
+
+const requiredRegressionLabel = Boolean(REQUIRE_REGRESSION === 'true');
+
 export const applyLabels = async (
   context: Context<
     | "pull_request.opened"
@@ -9,18 +16,18 @@ export const applyLabels = async (
   >
 ) => {
   try {
-    const issue = context.payload.pull_request;
+    const { mergeable, labels, mergeable_state, milestone } = context.payload.pull_request;
 
-    const hasConflicts =
-      context.payload.pull_request.mergeable_state === "dirty";
+    const hasConflicts = mergeable_state === "dirty";
 
-    const { mergeable } = context.payload.pull_request;
+    const originalLabels = labels.map((label) => label.name);
 
-    const originalLabels = issue.labels.map((label) => label.name);
     const tested = Boolean(originalLabels.includes("stat: QA tested"));
     const skipped = Boolean(originalLabels.includes("stat: QA skipped"));
+    const hasRegression = Boolean(originalLabels.includes("type: regression"));
+    const hasRequiredMilestone = !REQUIRE_MILESTONE || Boolean(milestone && milestone.number == parseInt(REQUIRE_MILESTONE));
 
-    const labels: string[] = [
+    const newLabels: string[] = [
       ...new Set([
         ...originalLabels,
         "stat: needs QA",
@@ -41,22 +48,22 @@ export const applyLabels = async (
       }
 
       if (label === "stat: ready to merge") {
-        return !hasConflicts && (skipped || tested) && mergeable;
+        return !hasConflicts && (skipped || tested) && mergeable && (!requiredRegressionLabel || hasRegression) && hasRequiredMilestone;
       }
       return true;
     });
 
     if (
-      labels.length === originalLabels.length &&
-      labels.every((label) => originalLabels.includes(label))
+      newLabels.length === originalLabels.length &&
+      newLabels.every((label) => originalLabels.includes(label))
     ) {
       return;
     }
 
-    console.log("DEBUG->", originalLabels, labels);
+    console.log("DEBUG->", originalLabels, newLabels);
     await context.octokit.issues.setLabels({
       ...context.issue(),
-      labels,
+      labels: newLabels,
     });
   } catch (error) {
     console.log(error);
