@@ -105,7 +105,9 @@ export const applyLabels = async (
     // if have a message, edit it
     // if not, create a new one
 
-    const comments = await context.octokit.issues.listComments();
+    const comments = await context.octokit.issues.listComments({
+      ...context.issue(),
+    });
 
     const botComment = comments.data.find(
       (comment) => comment.user?.login === GITHUB_LOGIN
