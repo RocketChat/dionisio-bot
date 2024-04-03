@@ -97,6 +97,8 @@ export const applyLabels = async (
       return true;
     });
 
+    console.log("DEBUG->", originalLabels, newLabels);
+
     if (
       newLabels.length === originalLabels.length &&
       newLabels.every((label) => originalLabels.includes(label))
