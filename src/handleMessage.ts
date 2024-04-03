@@ -35,7 +35,7 @@ export const handleMessage = async ({
     messages.push("This PR has an invalid title");
   }
 
-  if (messages.length === 1) {
+  if (messages.length === 0) {
     messages.push("Looks like this PR is ready to merge! 🎉");
     return [...messages, troubleMessage].join("\n");
   }
