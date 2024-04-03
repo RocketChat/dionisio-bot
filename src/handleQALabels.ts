@@ -9,7 +9,7 @@ const getProjects = async (
   octokit: Context["octokit"],
   url: string
 ): Promise<boolean> => {
-  const query = `query { 
+  const query = `query ($pull_request_url: URI!){ 
     totalCount :resource(url:$pull_request_url) {
       ... on PullRequest {
         projectsV2{
