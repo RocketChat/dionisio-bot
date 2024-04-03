@@ -1,7 +1,7 @@
 import { Context } from "probot";
 import { handleMessage } from "./handleMessage";
 
-const { GITHUB_LOGIN = "dionisio-bot" } = process.env;
+const { GITHUB_LOGIN = "dionisio-bot[bot]" } = process.env;
 
 // just gets the pr
 
