@@ -132,6 +132,14 @@ export const applyLabels = async (
       hasInvalidTitle,
     });
 
+    // compares if the message is the same as the one in the comment
+    // if it is, it does not update the comment
+    if (botComment && botComment.body === message) {
+      return;
+    }
+
+    // adds a meta tag containing the labels
+
     if (botComment) {
       await context.octokit.issues.updateComment({
         ...context.issue(),
