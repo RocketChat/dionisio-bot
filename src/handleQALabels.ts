@@ -97,14 +97,14 @@ export const applyLabels = async (
       return true;
     });
 
-    console.log("DEBUG->", originalLabels, currentLabels, newLabels);
+    // console.log("DEBUG->", originalLabels, currentLabels, newLabels);
 
-    if (
-      newLabels.length === originalLabels.length &&
-      newLabels.every((label) => originalLabels.includes(label))
-    ) {
-      return;
-    }
+    // if (
+    //   newLabels.length === originalLabels.length &&
+    //   newLabels.every((label) => originalLabels.includes(label))
+    // ) {
+    //   return;
+    // }
 
     // list all comments on the PR
     // get the first from the bot
