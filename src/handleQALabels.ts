@@ -22,14 +22,14 @@ const getProjects = async (
   const result = (await octokit.graphql(query, {
     pull_request_url: url,
   })) as {
-    totalCount: {
+    totalCount?: {
       projectsV2: {
         totalCount: number;
       };
     };
   };
 
-  return Boolean(result.totalCount.projectsV2.totalCount);
+  return Boolean(result.totalCount?.projectsV2.totalCount);
 };
 
 export const applyLabels = async (
