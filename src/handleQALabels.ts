@@ -59,23 +59,23 @@ export const applyLabels = async (
      * we merged both labels into one `stat: QA: assured` label which is more clear for external contributors
      */
 
-    const originalLabels = labels
-      .map((label) => label.name)
-      .map((label) => {
-        if (label === "stat: QA tested" || label === "stat: QA skipped") {
-          return "stat: QA assured";
-        }
-        return label;
-      });
+    const originalLabels = labels.map((label) => label.name);
 
-    const assured = Boolean(originalLabels.includes("stat: QA assured"));
+    const currentLabels = originalLabels.map((label) => {
+      if (label === "stat: QA tested" || label === "stat: QA skipped") {
+        return "stat: QA assured";
+      }
+      return label;
+    });
+
+    const assured = Boolean(currentLabels.includes("stat: QA assured"));
 
     const hasMilestone = Boolean(
       milestone || (await getProjects(context.octokit, url))
     );
 
     const newLabels: string[] = [
-      ...new Set([...originalLabels, "stat: ready to merge", "stat: conflict"]),
+      ...new Set([...currentLabels, "stat: ready to merge", "stat: conflict"]),
     ].filter((label) => {
       if (label === "stat: conflict") {
         return hasConflicts;
@@ -97,7 +97,7 @@ export const applyLabels = async (
       return true;
     });
 
-    console.log("DEBUG->", originalLabels, newLabels);
+    console.log("DEBUG->", originalLabels, currentLabels, newLabels);
 
     if (
       newLabels.length === originalLabels.length &&
