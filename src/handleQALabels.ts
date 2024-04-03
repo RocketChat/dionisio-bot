@@ -33,22 +33,26 @@ const getProjects = async (
 };
 
 export const applyLabels = async (
+  pullRequest: {
+    mergeable?: boolean | null;
+    labels: { name: string }[];
+    mergeable_state: string;
+    milestone?: string;
+    url: string;
+  },
   context: Context<
     | "pull_request.opened"
     | "pull_request.synchronize"
     | "pull_request.labeled"
     | "pull_request.unlabeled"
-    // | "issues.milestoned"
-    // | "issues.demilestoned"
+    | "issues.milestoned"
+    | "issues.demilestoned"
   >
 ) => {
   try {
-    const { mergeable, labels, mergeable_state, milestone, url } =
-      context.payload.pull_request;
+    const hasConflicts = pullRequest.mergeable_state === "dirty";
 
-    const hasConflicts = mergeable_state === "dirty";
-
-    const hasInvalidTitle = labels.some(
+    const hasInvalidTitle = pullRequest.labels.some(
       (label) => label.name === "Invalid PR Title"
     );
 
@@ -59,7 +63,7 @@ export const applyLabels = async (
      * we merged both labels into one `stat: QA: assured` label which is more clear for external contributors
      */
 
-    const originalLabels = labels.map((label) => label.name);
+    const originalLabels = pullRequest.labels.map((label) => label.name);
 
     const currentLabels = originalLabels.map((label) => {
       if (label === "stat: QA tested" || label === "stat: QA skipped") {
@@ -71,7 +75,8 @@ export const applyLabels = async (
     const assured = Boolean(currentLabels.includes("stat: QA assured"));
 
     const hasMilestone = Boolean(
-      milestone || (await getProjects(context.octokit, url))
+      pullRequest.milestone ||
+        (await getProjects(context.octokit, pullRequest.url))
     );
 
     const newLabels: string[] = [
@@ -89,7 +94,7 @@ export const applyLabels = async (
         return (
           !hasConflicts &&
           assured &&
-          mergeable &&
+          pullRequest.mergeable &&
           hasMilestone &&
           !hasInvalidTitle
         );
@@ -122,7 +127,7 @@ export const applyLabels = async (
     const message = await handleMessage({
       assured,
       hasConflicts,
-      mergeable: Boolean(mergeable && !hasConflicts),
+      mergeable: Boolean(pullRequest.mergeable && !hasConflicts),
       hasMilestone,
       hasInvalidTitle,
     });

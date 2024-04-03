@@ -4,6 +4,27 @@ import { applyLabels } from "./handleQALabels";
 export = (app: Probot) => {
   app.log.useLevelLabels = true;
 
+  app.on(["issues.milestoned", "issues.demilestoned"], async (context) => {
+    const { issue } = context.payload;
+
+    if (!issue.pull_request) {
+      return;
+    }
+
+    const pr = await context.octokit.pulls.get({
+      ...context.issue(),
+      pull_number: issue.number,
+    });
+
+    applyLabels(
+      {
+        ...pr.data,
+        milestone: pr.data.milestone?.title,
+      },
+      context
+    );
+  });
+
   app.on(
     [
       "pull_request.opened",
@@ -11,8 +32,14 @@ export = (app: Probot) => {
       "pull_request.labeled",
       "pull_request.unlabeled",
     ],
-    async (context) => {
-      applyLabels(context);
+    async (context): Promise<void> => {
+      applyLabels(
+        {
+          ...context.payload.pull_request,
+          milestone: context.payload.pull_request.milestone?.title,
+        },
+        context
+      );
 
       const { owner, repo } = context.repo();
 
