@@ -1,3 +1,5 @@
+const troubleMessage = `If you have any trouble, please check the [PR guidelines](https://handbook.rocket.chat/departments-and-operations/research-and-development/engineering/development/pr-general-instructions-and-handling)`;
+
 export const handleMessage = async ({
   assured,
   hasConflicts,
@@ -11,40 +13,37 @@ export const handleMessage = async ({
   hasMilestone: boolean;
   hasInvalidTitle: boolean;
 }) => {
-  const messages: string[] = [
-    `If you have any trouble, please check the [PR guidelines](https://handbook.rocket.chat/departments-and-operations/research-and-development/engineering/development/pr-general-instructions-and-handling)`,
-  ];
+  const messages: string[] = [];
 
   if (hasConflicts) {
-    messages.unshift(
-      "This PR has conflicts, please resolve them before merging"
-    );
+    messages.push("This PR has conflicts, please resolve them before merging");
   }
 
   if (!assured) {
-    messages.unshift("This PR is missing the 'stat: QA assured' label");
+    messages.push("This PR is missing the 'stat: QA assured' label");
   }
 
   if (!mergeable) {
-    messages.unshift("This PR is not mergeable");
+    messages.push("This PR is not mergeable");
   }
 
   if (!hasMilestone) {
-    messages.unshift("This PR is missing the required milestone or project");
+    messages.push("This PR is missing the required milestone or project");
   }
 
   if (hasInvalidTitle) {
-    messages.unshift("This PR has an invalid title");
+    messages.push("This PR has an invalid title");
   }
 
   if (messages.length === 1) {
-    messages.unshift("Looks like this PR is ready to merge! 🎉");
-    return messages.join("\n");
+    messages.push("Looks like this PR is ready to merge! 🎉");
+    return [...messages, troubleMessage].join("\n");
   }
 
   return [
     `Looks like this PR is not ready to merge, because of the following issues:`,
     ...messages.map((message) => `- ${message}`),
     `Please fix the issues and try again`,
+    troubleMessage,
   ].join("\n");
 };
