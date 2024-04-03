@@ -127,7 +127,7 @@ export const applyLabels = async (
     const message = await handleMessage({
       assured,
       hasConflicts,
-      mergeable: Boolean(pullRequest.mergeable && !hasConflicts),
+      mergeable: Boolean(pullRequest.mergeable !== false && !hasConflicts),
       hasMilestone,
       hasInvalidTitle,
     });
