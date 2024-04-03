@@ -2,6 +2,8 @@ import { Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
 
 export = (app: Probot) => {
+  app.log.useLevelLabels = true;
+
   app.on(
     [
       "pull_request.opened",

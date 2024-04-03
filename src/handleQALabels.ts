@@ -75,11 +75,7 @@ export const applyLabels = async (
         return hasConflicts;
       }
 
-      if (
-        label === "stat: needs QA" ||
-        label === "stat: QA skipped" ||
-        label === "stat: QA tested"
-      ) {
+      if (label === "stat: QA skipped" || label === "stat: QA tested") {
         return false; // it was replaced by stat: QA: assured it should not be here but just in case
       }
 
@@ -88,8 +84,6 @@ export const applyLabels = async (
       }
       return true;
     });
-
-    console.log("DEBUG->", originalLabels, newLabels);
 
     if (
       newLabels.length === originalLabels.length &&
