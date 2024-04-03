@@ -64,10 +64,6 @@ export const applyLabels = async (
 
     const assured = Boolean(originalLabels.includes("stat: QA assured"));
 
-    context.octokit.projects.listForRepo({
-      ...context.repo(),
-    });
-
     const hasMilestone = Boolean(
       milestone || (await getProjects(context.octokit, url))
     );
@@ -92,6 +88,8 @@ export const applyLabels = async (
       }
       return true;
     });
+
+    console.log("DEBUG->", originalLabels, newLabels);
 
     if (
       newLabels.length === originalLabels.length &&
