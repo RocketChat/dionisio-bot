@@ -38,6 +38,8 @@ export const applyLabels = async (
     | "pull_request.synchronize"
     | "pull_request.labeled"
     | "pull_request.unlabeled"
+    // | "issues.milestoned"
+    // | "issues.demilestoned"
   >
 ) => {
   try {
@@ -45,6 +47,10 @@ export const applyLabels = async (
       context.payload.pull_request;
 
     const hasConflicts = mergeable_state === "dirty";
+
+    const hasInvalidTitle = labels.some(
+      (label) => label.name === "Invalid PR Title"
+    );
 
     /**
      * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
@@ -80,7 +86,13 @@ export const applyLabels = async (
       }
 
       if (label === "stat: ready to merge") {
-        return !hasConflicts && assured && mergeable && hasMilestone;
+        return (
+          !hasConflicts &&
+          assured &&
+          mergeable &&
+          hasMilestone &&
+          !hasInvalidTitle
+        );
       }
       return true;
     });
@@ -110,6 +122,7 @@ export const applyLabels = async (
       hasConflicts,
       mergeable: Boolean(mergeable && !hasConflicts),
       hasMilestone,
+      hasInvalidTitle,
     });
 
     if (botComment) {

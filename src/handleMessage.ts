@@ -3,11 +3,13 @@ export const handleMessage = async ({
   hasConflicts,
   mergeable,
   hasMilestone,
+  hasInvalidTitle,
 }: {
   assured: boolean;
   hasConflicts: boolean;
   mergeable: boolean;
   hasMilestone: boolean;
+  hasInvalidTitle: boolean;
 }) => {
   const messages: string[] = [
     `If you have any trouble, please check the [PR guidelines](https://handbook.rocket.chat/departments-and-operations/research-and-development/engineering/development/pr-general-instructions-and-handling)`,
@@ -31,8 +33,13 @@ export const handleMessage = async ({
     messages.unshift("This PR is missing the required milestone or project");
   }
 
-  if (messages.length === 0) {
-    return ["Looks like this PR is ready to merge! 🎉"].join("\n");
+  if (hasInvalidTitle) {
+    messages.unshift("This PR has an invalid title");
+  }
+
+  if (messages.length === 1) {
+    messages.unshift("Looks like this PR is ready to merge! 🎉");
+    return messages.join("\n");
   }
 
   return [
