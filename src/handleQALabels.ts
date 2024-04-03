@@ -109,6 +109,7 @@ export const applyLabels = async (
       ...context.issue(),
     });
 
+    console.log(comments);
     const botComment = comments.data.find(
       (comment) => comment.user?.login === GITHUB_LOGIN
     );
