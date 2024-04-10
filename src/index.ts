@@ -16,6 +16,10 @@ export = (app: Probot) => {
       pull_number: issue.number,
     });
 
+    if (pr.data.closed_at) {
+      return;
+    }
+
     applyLabels(
       {
         ...pr.data,
@@ -33,6 +37,10 @@ export = (app: Probot) => {
       "pull_request.unlabeled",
     ],
     async (context): Promise<void> => {
+      if (context.payload.pull_request.closed_at) {
+        return;
+      }
+
       applyLabels(
         {
           ...context.payload.pull_request,
