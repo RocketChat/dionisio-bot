@@ -1,5 +1,10 @@
 const troubleMessage = `If you have any trouble, please check the [PR guidelines](https://handbook.rocket.chat/departments-and-operations/research-and-development/engineering/development/pr-general-instructions-and-handling)`;
 
+const normalizeVersion = (version: string) => {
+  const [major, minor = 0, patch = 0] = version.split(".");
+  return `${major}.${minor}.${patch}`;
+};
+
 export const handleMessage = async ({
   assured,
   hasConflicts,
@@ -38,7 +43,9 @@ export const handleMessage = async ({
 
   if (wrongVersion) {
     messages.push(
-      `This PR is targeting the wrong base branch. It should target ${wrongVersion.targetVersion}, but it targets ${wrongVersion.currentVersion}`
+      `This PR is targeting the wrong base branch. It should target ${normalizeVersion(
+        wrongVersion.targetVersion
+      )}, but it targets ${normalizeVersion(wrongVersion.currentVersion)}`
     );
   }
 
