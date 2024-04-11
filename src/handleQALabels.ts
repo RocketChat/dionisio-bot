@@ -70,21 +70,20 @@ export const applyLabels = async (
       //   (
       //     .data
       // );
-
-      log(
-        await context.octokit.request(
-          "GET /repos/{owner}/{repo}/contents/{path}",
-          {
-            owner: context.payload.repository.owner.login,
-            repo: context.payload.repository.name,
-            path: "package.json",
-            headers: {
-              Accept: "application/vnd.github.raw+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          }
-        )
+      const result = await context.octokit.request(
+        "GET /repos/{owner}/{repo}/contents/{path}",
+        {
+          owner: context.payload.repository.owner.login,
+          repo: context.payload.repository.name,
+          path: "package.json",
+          headers: {
+            Accept: "application/vnd.github.raw+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        }
       );
+      log("ASD->", result);
+      console.log(`RESULT->`, result);
     } catch (error) {
       console.log(error);
     }

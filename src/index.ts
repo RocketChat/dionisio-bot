@@ -2,7 +2,7 @@ import { Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
 
 export = (app: Probot) => {
-  app.log.useLevelLabels = true;
+  app.log.useLevelLabels = false;
 
   app.on(["issues.milestoned", "issues.demilestoned"], async (context) => {
     const { issue } = context.payload;
