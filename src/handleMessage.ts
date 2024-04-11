@@ -38,7 +38,7 @@ export const handleMessage = async ({
 
   if (wrongVersion) {
     messages.push(
-      `This PR is targeting the wrong version. It should target ${wrongVersion.targetVersion}, but it targets ${wrongVersion.currentVersion}`
+      `This PR is targeting the wrong base branch. It should target ${wrongVersion.targetVersion}, but it targets ${wrongVersion.currentVersion}`
     );
   }
 
