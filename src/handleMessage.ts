@@ -6,14 +6,14 @@ export const handleMessage = async ({
   mergeable,
   hasMilestone,
   hasInvalidTitle,
-  isTargetingRightVersion,
+  wrongVersion,
 }: {
   assured: boolean;
   hasConflicts: boolean;
   mergeable: boolean;
   hasMilestone: boolean;
   hasInvalidTitle: boolean;
-  isTargetingRightVersion?: {
+  wrongVersion?: {
     currentVersion: string;
     targetVersion: string;
   };
@@ -36,9 +36,9 @@ export const handleMessage = async ({
     messages.push("This PR is missing the required milestone or project");
   }
 
-  if (isTargetingRightVersion) {
+  if (wrongVersion) {
     messages.push(
-      `This PR is targeting the wrong version. It should target ${isTargetingRightVersion.targetVersion}, but it targets ${isTargetingRightVersion.currentVersion}`
+      `This PR is targeting the wrong version. It should target ${wrongVersion.targetVersion}, but it targets ${wrongVersion.currentVersion}`
     );
   }
 

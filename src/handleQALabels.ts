@@ -94,13 +94,15 @@ export const applyLabels = async (
      */
 
     const [version] = versionFromPackage.split("-");
+    const isTargetingRightVersion = targetingVersion.some((m) =>
+      version.startsWith(m)
+    );
 
-    console.log("AUE", targetingVersion, versionFromPackage, version);
-
-    const isTargetingRightVersion = targetingVersion.some((milestone) => {
-      return version.startsWith(milestone);
+    console.log({
+      version,
+      targetingVersion,
+      isTargetingRightVersion,
     });
-
     /**
      * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
      * they were causing confusion, where people were assuming that PR was not being tested
@@ -161,13 +163,12 @@ export const applyLabels = async (
       mergeable: Boolean(pullRequest.mergeable !== false && !hasConflicts),
       hasMilestone,
       hasInvalidTitle,
-      isTargetingRightVersion:
-        targetingVersion[0] && isTargetingRightVersion
-          ? {
-              currentVersion: version,
-              targetVersion: targetingVersion[0],
-            }
-          : undefined,
+      wrongVersion: !isTargetingRightVersion
+        ? {
+            currentVersion: version,
+            targetVersion: targetingVersion[0]!,
+          }
+        : undefined,
     });
 
     // compares if the message is the same as the one in the comment
