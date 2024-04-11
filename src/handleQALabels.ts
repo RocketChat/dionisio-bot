@@ -84,7 +84,7 @@ export const applyLabels = async (
       context.log("ASD->", result);
       console.log(`RESULT->`, result);
     } catch (error) {
-      console.log(error);
+      console.log("ERROR ->", error);
     }
 
     const targetingVersion = [pullRequest.milestone]
