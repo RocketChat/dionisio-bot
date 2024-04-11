@@ -99,9 +99,10 @@ export const applyLabels = async (
     );
 
     console.log({
-      version,
+      packageVersion: version,
       targetingVersion,
       isTargetingRightVersion,
+      ref,
     });
     /**
      * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
