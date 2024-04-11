@@ -79,7 +79,7 @@ export const applyLabels = async (
 
     const targetingVersion = [pullRequest.milestone]
       .filter(Boolean)
-      .filter((milestone) => /(\d+\.\d+\.\d+)/.test(milestone!));
+      .filter((milestone) => /(\d+\.\d+(\.\d+)?)/.test(milestone!));
 
     const hasMilestone = Boolean(
       pullRequest.milestone ||

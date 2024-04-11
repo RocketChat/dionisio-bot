@@ -24,7 +24,7 @@ export = (app: Probot) => {
         return;
       }
 
-      applyLabels(
+      await applyLabels(
         {
           ...pr.data,
           milestone: pr.data.milestone?.title,
@@ -47,7 +47,7 @@ export = (app: Probot) => {
         return;
       }
 
-      applyLabels(
+      await applyLabels(
         {
           ...context.payload.pull_request,
           milestone: context.payload.pull_request.milestone?.title,
