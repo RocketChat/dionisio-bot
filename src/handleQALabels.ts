@@ -93,7 +93,7 @@ export const applyLabels = async (
      * version is in the package.json follows the x.y.z(-develop|-rc.x) pattern
      */
 
-    const [version] = versionFromPackage.version.split("-");
+    const [version] = versionFromPackage.split("-");
 
     console.log("AUE", targetingVersion, versionFromPackage, version);
 
