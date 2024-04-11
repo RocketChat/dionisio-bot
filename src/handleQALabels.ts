@@ -164,12 +164,13 @@ export const applyLabels = async (
       mergeable: Boolean(pullRequest.mergeable !== false && !hasConflicts),
       hasMilestone,
       hasInvalidTitle,
-      wrongVersion: !isTargetingRightVersion
-        ? {
-            currentVersion: version,
-            targetVersion: targetingVersion[0]!,
-          }
-        : undefined,
+      wrongVersion:
+        hasMilestone && !isTargetingRightVersion
+          ? {
+              currentVersion: version,
+              targetVersion: targetingVersion[0]!,
+            }
+          : undefined,
     });
 
     // compares if the message is the same as the one in the comment
