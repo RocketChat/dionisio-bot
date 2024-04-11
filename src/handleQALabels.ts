@@ -95,6 +95,8 @@ export const applyLabels = async (
 
     const [version] = versionFromPackage.version.split("-");
 
+    console.log("AUE", targetingVersion, versionFromPackage, version);
+
     const isTargetingRightVersion = targetingVersion.some((milestone) => {
       return version.startsWith(milestone);
     });

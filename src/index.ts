@@ -4,6 +4,8 @@ import { applyLabels } from "./handleQALabels";
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
 
+  app.log.level = "error";
+
   app.on(
     ["issues.milestoned", "issues.demilestoned"],
     async (context): Promise<void> => {
