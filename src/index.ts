@@ -29,7 +29,7 @@ export = (app: Probot) => {
           ...pr.data,
           milestone: pr.data.milestone?.title,
         },
-        pr.data.head.ref,
+        pr.data.base.ref,
         context
       );
     }
@@ -61,7 +61,7 @@ export = (app: Probot) => {
       const suites = await context.octokit.checks.listSuitesForRef({
         owner,
         repo,
-        ref: context.payload.pull_request.head.ref,
+        ref: context.payload.pull_request.base.ref,
       });
 
       const suite = suites.data.check_suites.find((suite) => {
