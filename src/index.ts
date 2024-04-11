@@ -4,30 +4,34 @@ import { applyLabels } from "./handleQALabels";
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
 
-  app.on(["issues.milestoned", "issues.demilestoned"], async (context) => {
-    const { issue } = context.payload;
+  app.on(
+    ["issues.milestoned", "issues.demilestoned"],
+    async (context): Promise<void> => {
+      const { issue } = context.payload;
 
-    if (!issue.pull_request) {
-      return;
+      if (!issue.pull_request) {
+        return;
+      }
+
+      const pr = await context.octokit.pulls.get({
+        ...context.issue(),
+        pull_number: issue.number,
+      });
+
+      if (pr.data.closed_at) {
+        return;
+      }
+
+      applyLabels(
+        {
+          ...pr.data,
+          milestone: pr.data.milestone?.title,
+        },
+        pr.data.head.ref,
+        context
+      );
     }
-
-    const pr = await context.octokit.pulls.get({
-      ...context.issue(),
-      pull_number: issue.number,
-    });
-
-    if (pr.data.closed_at) {
-      return;
-    }
-
-    applyLabels(
-      {
-        ...pr.data,
-        milestone: pr.data.milestone?.title,
-      },
-      context
-    );
-  });
+  );
 
   app.on(
     [
@@ -46,6 +50,7 @@ export = (app: Probot) => {
           ...context.payload.pull_request,
           milestone: context.payload.pull_request.milestone?.title,
         },
+        context.payload.pull_request.head.ref,
         context
       );
 

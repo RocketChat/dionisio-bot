@@ -40,6 +40,7 @@ export const applyLabels = async (
     milestone?: string;
     url: string;
   },
+  ref: string,
   context: Context<
     | "pull_request.opened"
     | "pull_request.synchronize"
@@ -56,36 +57,25 @@ export const applyLabels = async (
       (label) => label.name === "Invalid PR Title"
     );
 
-    // # GitHub CLI api
-    // # https://cli.github.com/manual/gh_api
+    const { data } = await context.octokit.request(
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      {
+        owner: context.payload.repository.owner.login,
+        repo: context.payload.repository.name,
+        path: "package.json",
+        ref,
+        headers: {
+          Accept: "application/vnd.github.raw+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      }
+    );
 
-    // gh api \
-    //   -H "Accept: application/vnd.github.raw+json" \
-    //   -H "X-GitHub-Api-Version: 2022-11-28" \
-    //   /repos/RocketChat/Rocket.Chat/contents/package.json
-
-    try {
-      // const versionFromPackage = JSON.parse(
-      //   (
-      //     .data
-      // );
-      const result = await context.octokit.request(
-        "GET /repos/{owner}/{repo}/contents/{path}",
-        {
-          owner: context.payload.repository.owner.login,
-          repo: context.payload.repository.name,
-          path: "package.json",
-          headers: {
-            Accept: "application/vnd.github.raw+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        }
-      );
-      context.log("ASD->", result);
-      console.log(`RESULT->`, result);
-    } catch (error) {
-      console.log("ERROR ->", error);
+    if (typeof data !== "string") {
+      return;
     }
+
+    const { version: versionFromPackage } = JSON.parse(data);
 
     const targetingVersion = [pullRequest.milestone]
       .filter(Boolean)
@@ -103,11 +93,11 @@ export const applyLabels = async (
      * version is in the package.json follows the x.y.z(-develop|-rc.x) pattern
      */
 
-    // const [version] = versionFromPackage.version.split("-");
+    const [version] = versionFromPackage.version.split("-");
 
-    // const isTargetingRightVersion = targetingVersion.some((milestone) => {
-    //   return version.startsWith(milestone);
-    // });
+    const isTargetingRightVersion = targetingVersion.some((milestone) => {
+      return version.startsWith(milestone);
+    });
 
     /**
      * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
@@ -150,15 +140,6 @@ export const applyLabels = async (
       return true;
     });
 
-    // console.log("DEBUG->", originalLabels, currentLabels, newLabels);
-
-    // if (
-    //   newLabels.length === originalLabels.length &&
-    //   newLabels.every((label) => originalLabels.includes(label))
-    // ) {
-    //   return;
-    // }
-
     // list all comments on the PR
     // get the first from the bot
     // if have a message, edit it
@@ -178,6 +159,13 @@ export const applyLabels = async (
       mergeable: Boolean(pullRequest.mergeable !== false && !hasConflicts),
       hasMilestone,
       hasInvalidTitle,
+      isTargetingRightVersion:
+        targetingVersion[0] && isTargetingRightVersion
+          ? {
+              currentVersion: version,
+              targetVersion: targetingVersion[0],
+            }
+          : undefined,
     });
 
     // compares if the message is the same as the one in the comment
@@ -201,13 +189,11 @@ export const applyLabels = async (
       });
     }
 
-    console.log("DEBUG->", originalLabels, newLabels);
     await context.octokit.issues.setLabels({
       ...context.issue(),
       labels: newLabels,
     });
   } catch (error) {
     console.log(error);
-    // error instanceof Error && core.setFailed(error.message);
   }
 };
