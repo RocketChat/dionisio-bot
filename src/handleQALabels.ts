@@ -56,6 +56,60 @@ export const applyLabels = async (
       (label) => label.name === "Invalid PR Title"
     );
 
+    // # GitHub CLI api
+    // # https://cli.github.com/manual/gh_api
+
+    // gh api \
+    //   -H "Accept: application/vnd.github.raw+json" \
+    //   -H "X-GitHub-Api-Version: 2022-11-28" \
+    //   /repos/RocketChat/Rocket.Chat/contents/package.json
+
+    try {
+      // const versionFromPackage = JSON.parse(
+      //   (
+      //     .data
+      // );
+
+      console.log(
+        await context.octokit.request(
+          "GET /repos/{owner}/{repo}/contents/{path}",
+          {
+            owner: context.payload.repository.owner.login,
+            repo: context.payload.repository.name,
+            path: "package.json",
+            headers: {
+              Accept: "application/vnd.github.raw+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+          }
+        )
+      );
+    } catch (error) {
+      console.log(error);
+    }
+
+    const targetingVersion = [pullRequest.milestone]
+      .filter(Boolean)
+      .filter((milestone) => /(\d+\.\d+\.\d+)/.test(milestone!));
+
+    const hasMilestone = Boolean(
+      pullRequest.milestone ||
+        (await getProjects(context.octokit, pullRequest.url))
+    );
+
+    /**
+     * Compare milestone/project with the current version
+     * The idea is to check if the PR is targeting the correct version
+     * Milestones has the version as x.y.z
+     * version is in the package.json follows the x.y.z(-develop|-rc.x) pattern
+     */
+
+    // const [version] = versionFromPackage.version.split("-");
+
+    // const isTargetingRightVersion = targetingVersion.some((milestone) => {
+    //   return version.startsWith(milestone);
+    // });
+
     /**
      * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
      * they were causing confusion, where people were assuming that PR was not being tested
@@ -73,11 +127,6 @@ export const applyLabels = async (
     });
 
     const assured = Boolean(currentLabels.includes("stat: QA assured"));
-
-    const hasMilestone = Boolean(
-      pullRequest.milestone ||
-        (await getProjects(context.octokit, pullRequest.url))
-    );
 
     const newLabels: string[] = [
       ...new Set([...currentLabels, "stat: ready to merge", "stat: conflict"]),
