@@ -61,7 +61,10 @@ export const handleMessage = async ({
   return [
     `Looks like this PR is not ready to merge, because of the following issues:`,
     ...messages.map((message) => `- ${message}`),
+
+    "",
     `Please fix the issues and try again`,
+    "",
     troubleMessage,
   ].join("\n");
 };
