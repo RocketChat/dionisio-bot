@@ -47,8 +47,7 @@ export const applyLabels = async (
     | "pull_request.unlabeled"
     | "issues.milestoned"
     | "issues.demilestoned"
-  >,
-  log: Context["log"]
+  >
 ) => {
   try {
     const hasConflicts = pullRequest.mergeable_state === "dirty";
@@ -82,7 +81,7 @@ export const applyLabels = async (
           },
         }
       );
-      log("ASD->", result);
+      context.log("ASD->", result);
       console.log(`RESULT->`, result);
     } catch (error) {
       console.log(error);
