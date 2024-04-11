@@ -47,7 +47,8 @@ export const applyLabels = async (
     | "pull_request.unlabeled"
     | "issues.milestoned"
     | "issues.demilestoned"
-  >
+  >,
+  log: Context["log"]
 ) => {
   try {
     const hasConflicts = pullRequest.mergeable_state === "dirty";
@@ -70,7 +71,7 @@ export const applyLabels = async (
       //     .data
       // );
 
-      console.log(
+      log(
         await context.octokit.request(
           "GET /repos/{owner}/{repo}/contents/{path}",
           {

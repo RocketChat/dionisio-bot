@@ -25,7 +25,8 @@ export = (app: Probot) => {
         ...pr.data,
         milestone: pr.data.milestone?.title,
       },
-      context
+      context,
+      app.log
     );
   });
 
