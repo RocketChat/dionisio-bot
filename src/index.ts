@@ -116,6 +116,14 @@ export = (app: Probot) => {
       return;
     }
 
+    const orgs = await context.octokit.orgs.listForUser({
+      username: comment.user.login,
+    });
+
+    if (!orgs.data.some(({ login }) => login === "RocketChat")) {
+      return;
+    }
+
     const matcher = /^\/([\w]+)\b *(.*)?$/m;
 
     const [, command] = comment.body.match(matcher) || [];
