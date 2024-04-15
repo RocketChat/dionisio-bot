@@ -108,6 +108,26 @@ export = (app: Probot) => {
       })
     );
   });
+
+  app.on(["issue_comment.created"], async (context) => {
+    const { comment, issue } = context.payload;
+
+    if (!issue.pull_request) {
+      return;
+    }
+
+    const matcher = /^\/([\w]+)\b *(.*)?$/m;
+
+    const [, command] = comment.body.match(matcher) || [];
+
+    if (command === "bark" || command === "howl") {
+      await context.octokit.issues.createComment({
+        ...context.issue(),
+        body: Math.random() > 0.5 ? "AU AU" : "woof",
+      });
+    }
+  });
+
   app.on(["check_suite.rerequested"], async function check(context) {
     const checkRuns = await context.octokit.checks.listForSuite(
       context.repo({
