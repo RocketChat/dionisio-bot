@@ -166,11 +166,10 @@ export = (app: Probot) => {
         const projects = (await context.octokit.graphql({
           query: `query{
             organization(login: "${repo.data.owner.login}"){
-              projectsV2(first: 100, orderBy: {field: NAME, direction: DESC}, query: "is:open in:title ${pathRelease}") {
+              projectsV2(first: 100, query: "is:open in:title ${pathRelease}") {
                 nodes {
                   id
-                  name
-                  path
+                  title
                 }
               }
             }}`,
@@ -180,8 +179,7 @@ export = (app: Probot) => {
               projectsV2: {
                 nodes: {
                   id: string;
-                  name: string;
-                  path: string;
+                  title: string;
                 }[];
               };
             };
@@ -191,7 +189,7 @@ export = (app: Probot) => {
         console.log("PROJECTS ->>", JSON.stringify(projects, null, 2));
 
         const project = projects.data.organization.projectsV2.nodes.find(
-          (project) => project.name === `Patch ${pathRelease}`
+          (project) => project.title === `Patch ${pathRelease}`
         );
 
         if (project) {
