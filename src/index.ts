@@ -159,6 +159,8 @@ export = (app: Probot) => {
           context.repo()
         );
 
+        const repo = await context.octokit.repos.get(context.repo());
+
         const pathRelease = semver.inc(latestRelease.data.tag_name, "patch");
 
         const projects = await context.octokit.projects.listForRepo({
@@ -168,17 +170,13 @@ export = (app: Probot) => {
         if (!projects.data.some((p) => p.name === `Release ${pathRelease}`)) {
           context.log.info(`Creating project ${pathRelease}`);
 
-          const repo = context.repo({});
-
-          console.log("AAAAAAA->", repo);
-
           await context.octokit.graphql({
             query: `
               mutation{
                 createProjectV2(
                   input: {
-                    ownerId: ${repo.owner.node_id},
-                    repositoryId: ${repo.repo.node_id},
+                    ownerId: ${repo.data.owner.node_id},
+                    repositoryId: ${repo.data.node_id},
                     title: "Patch ${pathRelease}",
                   }
                 ){
