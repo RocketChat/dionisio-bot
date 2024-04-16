@@ -168,7 +168,9 @@ export = (app: Probot) => {
         if (!projects.data.some((p) => p.name === `Release ${pathRelease}`)) {
           context.log.info(`Creating project ${pathRelease}`);
 
-          const repo = context.repo() as any;
+          const repo = context.repo({});
+
+          console.log("AAAAAAA->", repo);
 
           await context.octokit.graphql({
             query: `
