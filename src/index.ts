@@ -1,5 +1,6 @@
 import { Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
+import semver from "semver";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
@@ -116,6 +117,15 @@ export = (app: Probot) => {
       return;
     }
 
+    const pr = await context.octokit.pulls.get({
+      ...context.issue(),
+      pull_number: issue.number,
+    });
+
+    if (!pr.data) {
+      return;
+    }
+
     const orgs = await context.octokit.orgs.listForUser({
       username: comment.user.login,
     });
@@ -133,6 +143,84 @@ export = (app: Probot) => {
         ...context.issue(),
         body: Math.random() > 0.5 ? "AU AU" : "woof",
       });
+      return;
+    }
+
+    /**
+     * Gets the latest release of the repository
+     * check if exists a branch with the latest version
+     * triggers a workflow_dispatch event to create a new patch release
+     * creates a project with the latest version
+     */
+
+    if (command === "patch") {
+      try {
+        const latestRelease = await context.octokit.repos.getLatestRelease(
+          context.repo()
+        );
+
+        const pathRelease = semver.inc(latestRelease.data.tag_name, "patch");
+
+        const projects = await context.octokit.projects.listForRepo({
+          ...context.repo(),
+        });
+
+        if (!projects.data.some((p) => p.name === `Release ${pathRelease}`)) {
+          context.log.info(`Creating project ${pathRelease}`);
+
+          await context.octokit.graphql({
+            query: `
+              mutation ($owner: string ) {
+                createProjectV2(
+                  input: {
+                    ownerId: $owner,
+                    title: "Patch ${pathRelease}",
+                  }
+                ){
+                  projectV2 {
+                    id
+                  }
+                }
+              }
+            `,
+            variables: {
+              ownerId: comment.user.login,
+            },
+          });
+
+          // await context.octokit.projects.createForRepo({
+          //   ...context.repo(),
+          //   name: `Release ${pathRelease}`,
+          //   body: `This is a patch release of ${pathRelease}`,
+          //   auto_init: true,
+          //   private: true,
+          // });
+
+          await context.octokit.actions.createWorkflowDispatch({
+            ...context.repo(),
+            inputs: {
+              name: "patch",
+              "base-ref": "develop",
+            },
+            ref: "refs/heads/develop",
+          });
+        } else {
+          context.log.info(`Project ${pathRelease} already exists`);
+        }
+
+        // adds the pull request to the release
+        await context.octokit.projects.createCard({
+          ...context.repo(),
+          card_id: pr.data.id,
+          content_id: latestRelease.data.id,
+          content_type: "release",
+          state: "open",
+          assignees: [comment.user.login],
+          labels: ["patch"],
+        });
+      } catch (error: any) {
+        context.log.error(error);
+      }
     }
   });
 

@@ -32,6 +32,32 @@ const getProjects = async (
   return Boolean(result.totalCount?.projectsV2.totalCount);
 };
 
+// query {
+//   repository(owner: "RocketChat", name: "Rocket.Chat") {
+//     projectsV2(query: "Patch 6.7.1", last: 1) {
+//       nodes {
+//         number
+//       }
+//     }
+//   }
+// }
+
+const getProjectByName = async (context: Context, name: string) => {
+  const result = (await context.octokit.graphql(
+    `query {
+      repository(owner: "RocketChat", name: "Rocket.Chat") {
+        projectsV2(query: "${name}", last: 1) {
+          nodes {
+            number
+          }
+        }
+      }
+    }`
+  )) as { repository: { projectsV2: { nodes: { number: string }[] } } };
+
+  return result.repository.projectsV2.nodes[0];
+};
+
 export const applyLabels = async (
   pullRequest: {
     mergeable?: boolean | null;
