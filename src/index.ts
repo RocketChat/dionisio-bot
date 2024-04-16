@@ -197,6 +197,11 @@ export = (app: Probot) => {
 
           await addPrToProject(context, pr.data.node_id, project.id);
 
+          await context.octokit.issues.createComment({
+            ...context.issue(),
+            body: `Pull request added to Project: "${project.title}"`,
+          });
+
           return;
         }
         context.log.info(`Creating project ${pathRelease}`);
@@ -219,6 +224,7 @@ export = (app: Probot) => {
         })) as {
           projectV2: {
             id: string;
+            title: string;
           };
         };
         console.log(
@@ -253,6 +259,12 @@ export = (app: Probot) => {
           pr.data.node_id,
           projectCreated.projectV2.id
         );
+        // TODO: bark to inform dionisio received the command
+
+        await context.octokit.issues.createComment({
+          ...context.issue(),
+          body: `Pull request added to Project: "${projectCreated.projectV2.title}"`,
+        });
 
         // adds the pull request to the release
       } catch (error: any) {
