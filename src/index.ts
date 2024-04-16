@@ -173,7 +173,8 @@ export = (app: Probot) => {
               mutation{
                 createProjectV2(
                   input: {
-                    ownerId: ${comment.user.id},
+                    ownerId: ${context.repo().owner},
+                    repositoryId: ${context.repo().repo},
                     title: "Patch ${pathRelease}",
                   }
                 ){
