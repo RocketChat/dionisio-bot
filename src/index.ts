@@ -175,8 +175,8 @@ export = (app: Probot) => {
               mutation{
                 createProjectV2(
                   input: {
-                    ownerId: ${repo.data.owner.node_id},
-                    repositoryId: ${repo.data.node_id},
+                    ownerId: "${repo.data.owner.node_id}",
+                    repositoryId: "${repo.data.node_id}",
                     title: "Patch ${pathRelease}",
                   }
                 ){
