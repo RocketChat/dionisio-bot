@@ -1,4 +1,4 @@
-import { Probot } from "probot";
+import { Context, Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
 import semver from "semver";
 
@@ -163,15 +163,48 @@ export = (app: Probot) => {
 
         const pathRelease = semver.inc(latestRelease.data.tag_name, "patch");
 
-        const projects = await context.octokit.projects.listForRepo({
-          ...context.repo(),
-        });
+        const projects = (await context.octokit.graphql({
+          query: `
+            organization(login: "${repo.data.owner.login}"){
+              projectsV2(first: 100, orderBy: {field: NAME, direction: DESC}, query: "is:open in:title ${pathRelease}") {
+                nodes {
+                  id
+                  name
+                  path
+                }
+              }
+            }`,
+        })) as {
+          data: {
+            organization: {
+              projectsV2: {
+                nodes: {
+                  id: string;
+                  name: string;
+                  path: string;
+                }[];
+              };
+            };
+          };
+        };
 
-        if (!projects.data.some((p) => p.name === `Release ${pathRelease}`)) {
-          context.log.info(`Creating project ${pathRelease}`);
+        console.log("PROJECTS ->>", JSON.stringify(projects, null, 2));
 
-          await context.octokit.graphql({
-            query: `
+        const project = projects.data.organization.projectsV2.nodes.find(
+          (project) => project.name === `Patch ${pathRelease}`
+        );
+
+        if (project) {
+          context.log.info(`Project ${pathRelease} already exists`);
+
+          await addPrToProject(context, String(pr.data.id), String(project.id));
+
+          return;
+        }
+        context.log.info(`Creating project ${pathRelease}`);
+
+        const projectCreated = (await context.octokit.graphql({
+          query: `
               mutation{
                 createProjectV2(
                   input: {
@@ -185,39 +218,47 @@ export = (app: Probot) => {
                 }
               }
             `,
-          });
-
-          // await context.octokit.projects.createForRepo({
-          //   ...context.repo(),
-          //   name: `Release ${pathRelease}`,
-          //   body: `This is a patch release of ${pathRelease}`,
-          //   auto_init: true,
-          //   private: true,
-          // });
-
-          await context.octokit.actions.createWorkflowDispatch({
-            ...context.repo(),
-            inputs: {
-              name: "patch",
-              "base-ref": "develop",
+        })) as {
+          data: {
+            projectV2: {
+              id: string;
+            };
+          };
+        };
+        console.log(
+          "createWorkflowDispatch->>>>",
+          JSON.stringify(
+            {
+              ...context.repo(),
+              inputs: {
+                name: "patch",
+                "base-ref": `master`,
+              },
+              ref: "refs/heads/develop",
+              workflow_id: "new-release.yml",
             },
-            ref: "refs/heads/develop",
-            workflow_id: "new-release.yml",
-          });
-        } else {
-          context.log.info(`Project ${pathRelease} already exists`);
-        }
+            null,
+            2
+          )
+        );
+
+        // await context.octokit.actions.createWorkflowDispatch({
+        //   ...context.repo(),
+        //   inputs: {
+        //     name: "patch",
+        //     "base-ref": `master`,
+        //   },
+        //   ref: "refs/heads/develop",
+        //   workflow_id: "new-release.yml",
+        // });
+
+        await addPrToProject(
+          context,
+          String(pr.data.id),
+          projectCreated.data.projectV2.id
+        );
 
         // adds the pull request to the release
-        await context.octokit.projects.createCard({
-          ...context.repo(),
-          card_id: pr.data.id,
-          content_id: latestRelease.data.id,
-          content_type: "release",
-          state: "open",
-          assignees: [comment.user.login],
-          labels: ["patch"],
-        });
       } catch (error: any) {
         context.log.error(error);
       }
@@ -242,5 +283,21 @@ export = (app: Probot) => {
         check_run_id: checkRuns.data.check_runs[0].id,
       })
     );
+  });
+};
+
+const addPrToProject = (context: Context, pr: string, project: string) => {
+  return context.octokit.graphql({
+    query: `mutation($project:ID!, $pr:ID!) {
+    addProjectV2ItemById(input: {projectId: $project, contentId: $pr}) {
+      item {
+        id
+      }
+    }
+  }`,
+    variables: {
+      project,
+      pr,
+    },
   });
 };
