@@ -173,7 +173,7 @@ export = (app: Probot) => {
               mutation{
                 createProjectV2(
                   input: {
-                    ownerId: ${comment.user.login},
+                    ownerId: ${comment.user.id},
                     title: "Patch ${pathRelease}",
                   }
                 ){
