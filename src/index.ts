@@ -176,7 +176,6 @@ export = (app: Probot) => {
                 createProjectV2(
                   input: {
                     ownerId: "${repo.data.owner.node_id}",
-                    repositoryId: "${repo.data.node_id}",
                     title: "Patch ${pathRelease}",
                   }
                 ){
