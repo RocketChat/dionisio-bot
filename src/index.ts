@@ -170,10 +170,10 @@ export = (app: Probot) => {
 
           await context.octokit.graphql({
             query: `
-              mutation ($owner: string ) {
+              mutation{
                 createProjectV2(
                   input: {
-                    ownerId: $owner,
+                    ownerId: ${comment.user.login},
                     title: "Patch ${pathRelease}",
                   }
                 ){
@@ -183,9 +183,6 @@ export = (app: Probot) => {
                 }
               }
             `,
-            variables: {
-              ownerId: comment.user.login,
-            },
           });
 
           // await context.octokit.projects.createForRepo({
