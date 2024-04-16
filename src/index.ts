@@ -193,7 +193,7 @@ export = (app: Probot) => {
         if (project) {
           context.log.info(`Project ${pathRelease} already exists`);
 
-          await addPrToProject(context, String(pr.data.id), String(project.id));
+          await addPrToProject(context, pr.data.id, project.id);
 
           return;
         }
@@ -246,11 +246,7 @@ export = (app: Probot) => {
         //   workflow_id: "new-release.yml",
         // });
 
-        await addPrToProject(
-          context,
-          String(pr.data.id),
-          projectCreated.projectV2.id
-        );
+        await addPrToProject(context, pr.data.id, projectCreated.projectV2.id);
 
         // adds the pull request to the release
       } catch (error: any) {
@@ -280,18 +276,14 @@ export = (app: Probot) => {
   });
 };
 
-const addPrToProject = (context: Context, pr: string, project: string) => {
+const addPrToProject = (context: Context, pr: number, project: string) => {
   return context.octokit.graphql({
-    query: `mutation($project:ID!, $pr:ID!) {
-    addProjectV2ItemById(input: {projectId: $project, contentId: $pr}) {
+    query: `mutation {
+    addProjectV2ItemById(input: {projectId: ${project}, contentId: ${pr}}) {
       item {
         id
       }
     }
   }`,
-    variables: {
-      project,
-      pr,
-    },
   });
 };
