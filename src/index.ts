@@ -168,13 +168,15 @@ export = (app: Probot) => {
         if (!projects.data.some((p) => p.name === `Release ${pathRelease}`)) {
           context.log.info(`Creating project ${pathRelease}`);
 
+          const repo = context.repo() as any;
+
           await context.octokit.graphql({
             query: `
               mutation{
                 createProjectV2(
                   input: {
-                    ownerId: ${context.repo().owner},
-                    repositoryId: ${context.repo().repo},
+                    ownerId: ${repo.owner.node_id},
+                    repositoryId: ${repo.repo.node_id},
                     title: "Patch ${pathRelease}",
                   }
                 ){
