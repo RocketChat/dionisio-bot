@@ -215,10 +215,8 @@ export = (app: Probot) => {
               }
             `,
         })) as {
-          data: {
-            projectV2: {
-              id: string;
-            };
+          projectV2: {
+            id: string;
           };
         };
         console.log(
@@ -251,7 +249,7 @@ export = (app: Probot) => {
         await addPrToProject(
           context,
           String(pr.data.id),
-          projectCreated.data.projectV2.id
+          projectCreated.projectV2.id
         );
 
         // adds the pull request to the release
