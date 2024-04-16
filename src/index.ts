@@ -238,15 +238,15 @@ export = (app: Probot) => {
           )
         );
 
-        // await context.octokit.actions.createWorkflowDispatch({
-        //   ...context.repo(),
-        //   inputs: {
-        //     name: "patch",
-        //     "base-ref": `master`,
-        //   },
-        //   ref: "refs/heads/develop",
-        //   workflow_id: "new-release.yml",
-        // });
+        await context.octokit.actions.createWorkflowDispatch({
+          ...context.repo(),
+          inputs: {
+            name: "patch",
+            "base-ref": `master`,
+          },
+          ref: "refs/heads/develop",
+          workflow_id: "new-release.yml",
+        });
 
         await addPrToProject(
           context,
