@@ -164,7 +164,7 @@ export = (app: Probot) => {
         const pathRelease = semver.inc(latestRelease.data.tag_name, "patch");
 
         const projects = (await context.octokit.graphql({
-          query: `
+          query: `query{
             organization(login: "${repo.data.owner.login}"){
               projectsV2(first: 100, orderBy: {field: NAME, direction: DESC}, query: "is:open in:title ${pathRelease}") {
                 nodes {
@@ -173,7 +173,7 @@ export = (app: Probot) => {
                   path
                 }
               }
-            }`,
+            }}`,
         })) as {
           data: {
             organization: {
