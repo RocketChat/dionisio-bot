@@ -170,6 +170,7 @@ export = (app: Probot) => {
                 nodes {
                   id
                   title
+                  number
                 }
               }
             }}`,
@@ -179,6 +180,7 @@ export = (app: Probot) => {
               nodes: {
                 id: string;
                 title: string;
+                number: number;
               }[];
             };
           };
@@ -278,12 +280,15 @@ export = (app: Probot) => {
 
 const addPrToProject = (context: Context, pr: number, project: string) => {
   return context.octokit.graphql({
-    query: `mutation {
-    addProjectV2ItemById(input: {projectId: ${project}, contentId: ${pr}}) {
+    query: `mutation($project:ID!, $pr:ID!) {
+    addProjectV2ItemById(input: {projectId: $project, contentId: $pr}) {
       item {
         id
       }
     }
   }`,
+
+    project,
+    pr,
   });
 };
