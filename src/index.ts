@@ -174,21 +174,19 @@ export = (app: Probot) => {
               }
             }}`,
         })) as {
-          data: {
-            organization: {
-              projectsV2: {
-                nodes: {
-                  id: string;
-                  title: string;
-                }[];
-              };
+          organization: {
+            projectsV2: {
+              nodes: {
+                id: string;
+                title: string;
+              }[];
             };
           };
         };
 
         console.log("PROJECTS ->>", JSON.stringify(projects, null, 2));
 
-        const project = projects.data.organization.projectsV2.nodes.find(
+        const project = projects.organization.projectsV2.nodes.find(
           (project) => project.title === `Patch ${pathRelease}`
         );
 
