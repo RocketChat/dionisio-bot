@@ -202,6 +202,7 @@ export = (app: Probot) => {
               "base-ref": "develop",
             },
             ref: "refs/heads/develop",
+            workflow_id: "new-release.yml",
           });
         } else {
           context.log.info(`Project ${pathRelease} already exists`);
