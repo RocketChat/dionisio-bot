@@ -374,7 +374,7 @@ const upsertProject = async (
     ...context.repo(),
     inputs: {
       name: "patch",
-      "base-ref": `master`,
+      "base-ref": base,
     },
     ref: "refs/heads/develop",
     workflow_id: "new-release.yml",
