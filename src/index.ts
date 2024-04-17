@@ -325,21 +325,26 @@ const upsertProject = async (
     try {
       await addPrToProject(context, pr.id, project.id);
 
-      context.log.info("CHERRYPICK", {
+      console.log(
+        "CHERRYPICK",
+        JSON.stringify({
+          ...context.repo(),
+          commits: [pr.sha],
+          head: `release-${release}`,
+          octokit: context.octokit,
+        }),
+        null,
+        2
+      );
+
+      const sha = await cherryPickCommits({
         ...context.repo(),
         commits: [pr.sha],
         head: `release-${release}`,
         octokit: context.octokit,
       });
 
-      await cherryPickCommits({
-        ...context.repo(),
-        commits: [pr.sha],
-        head: `release-${release}`,
-        octokit: context.octokit,
-      });
-
-      const sha = await context.octokit.issues.createComment({
+      await context.octokit.issues.createComment({
         ...context.issue(),
         body: `Pull request added to Project: "${project.title}"`,
       });
