@@ -136,7 +136,7 @@ export = (app: Probot) => {
 
     const matcher = /^\/([\w]+)\b *(.*)?$/m;
 
-    const [, command] = comment.body.match(matcher) || [];
+    const [, command, args] = comment.body.match(matcher) || [];
 
     if (command === "bark" || command === "howl") {
       await context.octokit.issues.createComment({
@@ -153,123 +153,59 @@ export = (app: Probot) => {
      * creates a project with the latest version
      */
 
-    if (command === "patch") {
+    if (command === "patch" && !args.trim()) {
       try {
         const latestRelease = await context.octokit.repos.getLatestRelease(
           context.repo()
         );
 
-        const repo = await context.octokit.repos.get(context.repo());
-
         const pathRelease = semver.inc(latestRelease.data.tag_name, "patch");
-
-        const projects = (await context.octokit.graphql({
-          query: `query{
-            organization(login: "${repo.data.owner.login}"){
-              projectsV2(first: 100, query: "is:open in:title ${pathRelease}") {
-                nodes {
-                  id
-                  title
-                  number
-                }
-              }
-            }}`,
-        })) as {
-          organization: {
-            projectsV2: {
-              nodes: {
-                id: string;
-                title: string;
-                number: number;
-              }[];
-            };
-          };
-        };
-
-        console.log("PROJECTS ->>", JSON.stringify(projects, null, 2));
-
-        const project = projects.organization.projectsV2.nodes.find(
-          (project) => project.title === `Patch ${pathRelease}`
-        );
-
-        if (project) {
-          context.log.info(`Project ${pathRelease} already exists`);
-
-          await addPrToProject(context, pr.data.node_id, project.id);
-
+        if (!pathRelease) {
           await context.octokit.issues.createComment({
             ...context.issue(),
-            body: `Pull request added to Project: "${project.title}"`,
+            body: "Could not find a valid version to patch",
           });
-
           return;
         }
-        context.log.info(`Creating project ${pathRelease}`);
 
-        const projectCreated = (await context.octokit.graphql({
-          query: `
-              mutation{
-                createProjectV2(
-                  input: {
-                    ownerId: "${repo.data.owner.node_id}",
-                    title: "Patch ${pathRelease}",
-                  }
-                ){
-                  projectV2 {
-                    id
-                  }
-                }
-              }
-            `,
-        })) as {
-          projectV2: {
-            id: string;
-            title: string;
-          };
-        };
-        console.log(
-          "createWorkflowDispatch->>>>",
-          JSON.stringify(
-            {
-              ...context.repo(),
-              inputs: {
-                name: "patch",
-                "base-ref": `master`,
-              },
-              ref: "refs/heads/develop",
-              workflow_id: "new-release.yml",
-            },
-            null,
-            2
-          )
-        );
-
-        await context.octokit.actions.createWorkflowDispatch({
-          ...context.repo(),
-          inputs: {
-            name: "patch",
-            "base-ref": `master`,
-          },
-          ref: "refs/heads/develop",
-          workflow_id: "new-release.yml",
-        });
-
-        await addPrToProject(
-          context,
-          pr.data.node_id,
-          projectCreated.projectV2.id
-        );
-        // TODO: bark to inform dionisio received the command
-
-        await context.octokit.issues.createComment({
-          ...context.issue(),
-          body: `Pull request added to Project: "${projectCreated.projectV2.title}"`,
-        });
+        await upsertProject(context, pathRelease, pr.data.node_id);
 
         // adds the pull request to the release
       } catch (error: any) {
         context.log.error(error);
       }
+    }
+    if (command === "backport" && args.trim()) {
+      const tags = args.split(" ").filter((arg) => /\d+\.\d+\.\d+/.test(arg));
+
+      if (tags.length === 0) {
+        await context.octokit.issues.createComment({
+          ...context.issue(),
+          body: "Please provide a list of tags to backport",
+        });
+        return;
+      }
+
+      // Filter out the tags that are already in the project
+
+      await Promise.all(
+        tags.map(async (tag) => {
+          const result = await context.octokit.repos.getReleaseByTag({
+            ...context.repo(),
+            tag_name: tag,
+          });
+
+          if (result.data) {
+            await context.octokit.issues.createComment({
+              ...context.issue(),
+              body: `${tag} already exists in the project`,
+            });
+            return undefined;
+          }
+
+          await upsertProject(context, pr.data.node_id, tag);
+        })
+      );
     }
   });
 
@@ -306,5 +242,108 @@ const addPrToProject = (context: Context, pr: string, project: string) => {
 
     project,
     pr,
+  });
+};
+
+const upsertProject = async (context: Context, release: string, pr: string) => {
+  const repo = await context.octokit.repos.get(context.repo());
+
+  const projects = (await context.octokit.graphql({
+    query: `query{
+            organization(login: "${repo.data.owner.login}"){
+              projectsV2(first: 100, query: "is:open in:title ${release}") {
+                nodes {
+                  id
+                  title
+                  number
+                }
+              }
+            }}`,
+  })) as {
+    organization: {
+      projectsV2: {
+        nodes: {
+          id: string;
+          title: string;
+          number: number;
+        }[];
+      };
+    };
+  };
+
+  console.log("PROJECTS ->>", JSON.stringify(projects, null, 2));
+
+  const project = projects.organization.projectsV2.nodes.find(
+    (project) => project.title === `Patch ${release}`
+  );
+
+  if (project) {
+    context.log.info(`Project ${release} already exists`);
+
+    await addPrToProject(context, pr, project.id);
+
+    await context.octokit.issues.createComment({
+      ...context.issue(),
+      body: `Pull request added to Project: "${project.title}"`,
+    });
+
+    return;
+  }
+  context.log.info(`Creating project ${release}`);
+
+  const projectCreated = (await context.octokit.graphql({
+    query: `
+              mutation{
+                createProjectV2(
+                  input: {
+                    ownerId: "${repo.data.owner.node_id}",
+                    title: "Patch ${release}",
+                  }
+                ){
+                  projectV2 {
+                    id
+                  }
+                }
+              }
+            `,
+  })) as {
+    projectV2: {
+      id: string;
+      title: string;
+    };
+  };
+  console.log(
+    "createWorkflowDispatch->>>>",
+    JSON.stringify(
+      {
+        ...context.repo(),
+        inputs: {
+          name: "patch",
+          "base-ref": `master`,
+        },
+        ref: "refs/heads/develop",
+        workflow_id: "new-release.yml",
+      },
+      null,
+      2
+    )
+  );
+
+  await context.octokit.actions.createWorkflowDispatch({
+    ...context.repo(),
+    inputs: {
+      name: "patch",
+      "base-ref": `master`,
+    },
+    ref: "refs/heads/develop",
+    workflow_id: "new-release.yml",
+  });
+
+  await addPrToProject(context, pr, projectCreated.projectV2.id);
+  // TODO: bark to inform dionisio received the command
+
+  await context.octokit.issues.createComment({
+    ...context.issue(),
+    body: `Pull request added to Project: "${projectCreated.projectV2.title}"`,
   });
 };
