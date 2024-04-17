@@ -169,7 +169,10 @@ export = (app: Probot) => {
           return;
         }
 
-        await upsertProject(context, pathRelease, pr.data.node_id);
+        await upsertProject(context, pathRelease, {
+          id: pr.data.node_id,
+          sha: pr.data.merge_commit_sha,
+        });
 
         // adds the pull request to the release
       } catch (error: any) {
@@ -220,7 +223,12 @@ export = (app: Probot) => {
             tag: previousTag,
           });
 
-          await upsertProject(context, tag, pr.data.node_id, previousTag);
+          await upsertProject(
+            context,
+            tag,
+            { id: pr.data.node_id, sha: pr.data.merge_commit_sha },
+            previousTag
+          );
         })
       );
     }
@@ -277,7 +285,7 @@ const addPrToProject = (context: Context, pr: string, project: string) => {
 const upsertProject = async (
   context: Context,
   release: string,
-  pr: string,
+  pr: { id: string; sha: string },
   base: string = "master"
 ) => {
   const repo = await context.octokit.repos.get(context.repo());
@@ -314,19 +322,25 @@ const upsertProject = async (
   if (project) {
     context.log.info(`Project ${release} already exists`);
 
-    await addPrToProject(context, pr, project.id);
+    try {
+      await addPrToProject(context, pr.id, project.id);
 
-    await context.octokit.issues.createComment({
-      ...context.issue(),
-      body: `Pull request added to Project: "${project.title}"`,
-    });
+      await cherryPickCommits({
+        ...context.repo(),
+        commits: [pr.sha],
+        head: `release-${release}`,
+        octokit: context.octokit,
+      });
 
-    await cherryPickCommits({
-      ...context.repo(),
-      commits: [],
-      head: `release-${release}`,
-      octokit: context.octokit,
-    });
+      const sha = await context.octokit.issues.createComment({
+        ...context.issue(),
+        body: `Pull request added to Project: "${project.title}"`,
+      });
+
+      console.log(`Comment added to PR: ${sha}`);
+    } catch (error) {
+      console.log(error);
+    }
 
     return;
   }
