@@ -190,12 +190,14 @@ export = (app: Probot) => {
 
       await Promise.all(
         tags.map(async (tag) => {
-          const result = await context.octokit.repos.getReleaseByTag({
-            ...context.repo(),
-            tag_name: tag,
-          });
+          const result = await context.octokit.repos
+            .getReleaseByTag({
+              ...context.repo(),
+              tag,
+            })
+            .catch(() => undefined);
 
-          if (result.data) {
+          if (result?.data) {
             await context.octokit.issues.createComment({
               ...context.issue(),
               body: `${tag} already exists in the project`,
