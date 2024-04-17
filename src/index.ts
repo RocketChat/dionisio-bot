@@ -325,6 +325,13 @@ const upsertProject = async (
     try {
       await addPrToProject(context, pr.id, project.id);
 
+      context.log.info("CHERRYPICK", {
+        ...context.repo(),
+        commits: [pr.sha],
+        head: `release-${release}`,
+        octokit: context.octokit,
+      });
+
       await cherryPickCommits({
         ...context.repo(),
         commits: [pr.sha],
@@ -337,9 +344,9 @@ const upsertProject = async (
         body: `Pull request added to Project: "${project.title}"`,
       });
 
-      console.log(`Comment added to PR: ${sha}`);
-    } catch (error) {
-      console.log(error);
+      context.log.info(`Comment added to PR: ${sha}`);
+    } catch (error: any) {
+      context.log.error(error);
     }
 
     return;
