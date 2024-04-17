@@ -110,7 +110,7 @@ export = (app: Probot) => {
     );
   });
 
-  app.on(["issue_comment.created"], async (context) => {
+  app.on(["issue_comment.created"], async (context): Promise<void> => {
     const { comment, issue } = context.payload;
 
     if (!issue.pull_request) {
@@ -188,7 +188,7 @@ export = (app: Probot) => {
 
       // Filter out the tags that are already in the project
 
-      await Promise.all(
+      await Promise.allSettled(
         tags.map(async (tag) => {
           const result = await context.octokit.repos
             .getReleaseByTag({
@@ -202,10 +202,24 @@ export = (app: Probot) => {
               ...context.issue(),
               body: `${tag} already exists in the project`,
             });
-            return undefined;
+            return;
           }
 
-          await upsertProject(context, pr.data.node_id, tag);
+          const ver = semver.patch(tag) - 1;
+
+          if (ver <= 0) {
+            return;
+          }
+
+          const previousTag =
+            semver.major(tag) + "." + semver.minor(tag) + "." + ver;
+
+          await context.octokit.repos.getReleaseByTag({
+            ...context.repo(),
+            tag: previousTag,
+          });
+
+          await upsertProject(context, tag, pr.data.node_id, previousTag);
         })
       );
     }
@@ -247,7 +261,12 @@ const addPrToProject = (context: Context, pr: string, project: string) => {
   });
 };
 
-const upsertProject = async (context: Context, release: string, pr: string) => {
+const upsertProject = async (
+  context: Context,
+  release: string,
+  pr: string,
+  base: string = "master"
+) => {
   const repo = await context.octokit.repos.get(context.repo());
 
   const projects = (await context.octokit.graphql({
@@ -321,7 +340,7 @@ const upsertProject = async (context: Context, release: string, pr: string) => {
         ...context.repo(),
         inputs: {
           name: "patch",
-          "base-ref": `master`,
+          "base-ref": base,
         },
         ref: "refs/heads/develop",
         workflow_id: "new-release.yml",
