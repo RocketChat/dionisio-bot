@@ -323,8 +323,6 @@ const upsertProject = async (
     context.log.info(`Project ${release} already exists`);
 
     try {
-      await addPrToProject(context, pr.id, project.id);
-
       console.log(
         "CHERRYPICK",
         JSON.stringify({
@@ -343,6 +341,8 @@ const upsertProject = async (
         head: `release-${release}`,
         octokit: context.octokit,
       });
+
+      await addPrToProject(context, pr.id, project.id);
 
       await context.octokit.issues.createComment({
         ...context.issue(),
