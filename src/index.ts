@@ -1,3 +1,4 @@
+import { cherryPickCommits } from "github-cherry-pick";
 import { Context, Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
 import semver from "semver";
@@ -318,6 +319,13 @@ const upsertProject = async (
     await context.octokit.issues.createComment({
       ...context.issue(),
       body: `Pull request added to Project: "${project.title}"`,
+    });
+
+    await cherryPickCommits({
+      ...context.repo(),
+      commits: [],
+      head: `release-${release}`,
+      octokit: context.octokit,
     });
 
     return;
