@@ -247,6 +247,18 @@ export = (app: Probot) => {
 };
 
 const addPrToProject = (context: Context, pr: string, project: string) => {
+  console.log(
+    `addPrToProject ->>`,
+    JSON.stringify(
+      {
+        project,
+        pr,
+      },
+      null,
+      2
+    )
+  );
+
   return context.octokit.graphql({
     query: `mutation($project:ID!, $pr:ID!) {
     addProjectV2ItemById(input: {projectId: $project, contentId: $pr}) {
