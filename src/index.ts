@@ -3,6 +3,7 @@ import { applyLabels } from "./handleQALabels";
 import { handlePatch } from "./handlePatch";
 import { handleBackport } from "./handleBackport";
 import { run } from "./Queue";
+import { consoleProps } from "./createPullRequest";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
@@ -172,13 +173,15 @@ export = (app: Probot) => {
       const tags = args.split(" ").filter((arg) => /\d+\.\d+\.\d+/.test(arg));
 
       try {
-        await handleBackport({
-          context,
-          pr: { ...pr.data, author: pr.data.user?.login! },
-          tags,
-        });
+        await handleBackport(
+          consoleProps("handleBackport", {
+            context,
+            pr: { ...pr.data, author: pr.data.user?.login! },
+            tags,
+          })
+        );
       } catch (e) {
-        console.log(e);
+        console.log("handleBackport->", e);
       }
       return;
     }
