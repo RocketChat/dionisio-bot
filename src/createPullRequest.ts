@@ -35,7 +35,7 @@ export const createPullRequest = async (
     consoleProps(`Cherry-pick backport`, {
       ...context.repo(),
       commits: [pr.sha],
-      head: `backport-${release}-${pr.id}`,
+      head: `backport-${release}-${pr.number}`,
       octokit: context.octokit,
     })
   );
