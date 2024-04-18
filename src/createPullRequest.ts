@@ -59,11 +59,13 @@ export const createPullRequest = async (
   );
 
   if (milestone) {
-    await context.octokit.issues.update({
-      ...context.repo(),
-      issue_numberL: pullRequest.data.number,
-      milestone: milestone.number,
-    });
+    await context.octokit.issues
+      .update({
+        ...context.repo(),
+        issue_number: pullRequest.data.number,
+        milestone: milestone.number,
+      })
+      .catch(() => undefined);
   }
   await context.octokit.issues.addLabels({
     ...context.repo(),
