@@ -171,11 +171,16 @@ export = (app: Probot) => {
     if (command === "backport" && args.trim()) {
       const tags = args.split(" ").filter((arg) => /\d+\.\d+\.\d+/.test(arg));
 
-      return handleBackport({
-        context,
-        pr: { ...pr.data, author: pr.data.user?.login! },
-        tags,
-      });
+      try {
+        await handleBackport({
+          context,
+          pr: { ...pr.data, author: pr.data.user?.login! },
+          tags,
+        });
+      } catch (e) {
+        console.log(e);
+      }
+      return;
     }
   });
 
