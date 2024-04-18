@@ -6,22 +6,17 @@ import { createPullRequest } from "./createPullRequest";
 const getProject = async (
   context: Context,
   release: string,
-  base: string = "master"
+  commit_sha: string
 ) => {
   const project = await getProjectsV2(context, release);
   if (project) {
     return project;
   }
 
-  const commit = await context.octokit.repos.getCommit({
-    ...context.repo(),
-    ref: base,
-  });
-
   await context.octokit.git.createRef({
     ...context.repo(),
     ref: `refs/heads/release-${release}`,
-    sha: commit.data.sha,
+    sha: commit_sha,
   });
 
   const projectCreated = await createProjectV2(
@@ -45,7 +40,12 @@ export const upsertProject = async (
   },
   base: string = "master"
 ) => {
-  const project = await getProject(context, release, base);
+  const commit = await context.octokit.repos.getCommit({
+    ...context.repo(),
+    ref: base,
+  });
+
+  const project = await getProject(context, release, commit.data.sha);
 
   if (!project) {
     return;
