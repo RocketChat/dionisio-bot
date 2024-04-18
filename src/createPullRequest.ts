@@ -1,5 +1,6 @@
 import { Context } from "probot";
 import { cherryPick } from "./cherryPick";
+import { ErrorCherryPickConflict } from "./errors/ErrorCherryPickConflict";
 
 export const consoleProps = <T>(title: string, args: T) => {
   console.log(title, JSON.stringify(args, null, 2));
@@ -17,6 +18,7 @@ export const createPullRequest = async (
     author: string;
   },
   commit_sha: string,
+  base: string,
   assignee: string
 ) => {
   const milestone = (
@@ -37,14 +39,23 @@ export const createPullRequest = async (
     })
   );
 
-  await cherryPick(
-    consoleProps(`Cherry-pick backport`, {
+  try {
+    await cherryPick(
+      consoleProps(`Cherry-pick backport`, {
+        ...context.repo(),
+        commits: [pr.sha],
+        head: `backport-${release}-${pr.number}`,
+        octokit: context.octokit,
+      })
+    );
+  } catch {
+    throw new ErrorCherryPickConflict({
       ...context.repo(),
       commits: [pr.sha],
       head: `backport-${release}-${pr.number}`,
-      octokit: context.octokit,
-    })
-  );
+      base,
+    });
+  }
 
   const pullRequest = await context.octokit.pulls.create(
     consoleProps(`Created backport PR`, {
@@ -62,17 +73,16 @@ export const createPullRequest = async (
     reviewers: [pr.author],
   });
 
-  if (milestone) {
-    await context.octokit.issues
-      .update({
-        ...context.repo(),
-        issue_number: pullRequest.data.number,
-        milestone: milestone.number,
-        assignee,
-        assignees: [assignee],
-      })
-      .catch(() => undefined);
-  }
+  await context.octokit.issues
+    .update({
+      ...context.repo(),
+      issue_number: pullRequest.data.number,
+      ...(milestone?.number && { milestone: milestone.number }),
+      assignee,
+      assignees: [assignee],
+    })
+    .catch(() => undefined);
+
   await context.octokit.issues.addLabels({
     ...context.repo(),
     issue_number: pullRequest.data.number,

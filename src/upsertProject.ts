@@ -96,6 +96,7 @@ export const upsertProject = async (
       release,
       { ...pr, sha: pr.sha },
       releaseBranch,
+      base,
       assignee
     );
 
