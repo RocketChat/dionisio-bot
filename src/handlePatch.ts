@@ -48,7 +48,7 @@ export const handlePatch = async ({
   } catch (err) {
     if (err instanceof ErrorCherryPickConflict) {
       context.octokit.issues.createComment({
-        ...context.repo(),
+        ...context.issue(),
         body: `
         Sorry, I couldn't do that backport because of conflicts. Could you please solve them?
         
