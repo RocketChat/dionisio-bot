@@ -1,6 +1,5 @@
 import { Context } from "probot";
 import { cherryPick } from "./cherryPick";
-import { major } from "semver";
 
 export const consoleProps = <T>(title: string, args: T) => {
   console.log(title, JSON.stringify(args, null, 2));
