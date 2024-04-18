@@ -66,6 +66,7 @@ after that just run \`/patch\` again
 `,
       });
     }
+    console.log(err);
   }
 
   await triggerWorkflow(context);

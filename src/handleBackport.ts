@@ -96,6 +96,7 @@ after that just run \`/backport ${tag}\` again
 `,
           });
         }
+        console.log(err);
       }
     })
   );
