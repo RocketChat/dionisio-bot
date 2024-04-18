@@ -58,18 +58,22 @@ export const handleBackport = async ({
         tag: previousTag,
       });
 
-      await upsertProject(
-        context,
-        tag,
-        {
-          id: pr.node_id,
-          sha: pr.merge_commit_sha,
-          title: pr.title,
-          number: pr.number,
-          author: pr.author,
-        },
-        previousTag
-      );
+      try {
+        await upsertProject(
+          context,
+          tag,
+          {
+            id: pr.node_id,
+            sha: pr.merge_commit_sha,
+            title: pr.title,
+            number: pr.number,
+            author: pr.author,
+          },
+          previousTag
+        );
+      } catch (e) {
+        console.log(e);
+      }
     })
   );
 };
