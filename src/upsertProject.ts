@@ -79,7 +79,7 @@ export const upsertProject = async (
       context,
       release,
       { ...pr, sha: pr.sha },
-      base
+      commit.data.sha
     );
 
     await addPrToProject(context, pr.id, project.id);
