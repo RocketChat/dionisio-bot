@@ -20,6 +20,19 @@ export const upsertProject = async (
   if (project) {
     context.log.info(`Project ${release} already exists`);
 
+    console.log(
+      "upsertProject",
+      JSON.stringify(
+        {
+          release,
+          pr,
+          base,
+        },
+        null,
+        2
+      )
+    );
+
     /**
      * Creates the patch branch
      * Created the pull request based on the new branch
