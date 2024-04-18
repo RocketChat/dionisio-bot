@@ -16,18 +16,13 @@ export const createPullRequest = async (
     title: string;
     author: string;
   },
-  base: string = "master"
+  commit_sha: string
 ) => {
-  const branch = await context.octokit.repos.getBranch({
-    ...context.repo(),
-    branch: `release-${base}`,
-  });
-
   await context.octokit.git.createRef(
     consoleProps(`Create ref for backport`, {
       ...context.repo(),
       ref: `refs/heads/backport-${release}-${pr.number}`,
-      sha: branch.data.commit.sha,
+      sha: commit_sha,
     })
   );
 

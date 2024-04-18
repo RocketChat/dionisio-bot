@@ -3,6 +3,36 @@ import { Context } from "probot";
 import { addPrToProject } from "./addPrToProject";
 import { createPullRequest } from "./createPullRequest";
 
+const getProject = async (
+  context: Context,
+  release: string,
+  base: string = "master"
+) => {
+  const project = await getProjectsV2(context, release);
+  if (project) {
+    return project;
+  }
+
+  const commit = await context.octokit.repos.getCommit({
+    ...context.repo(),
+    ref: base,
+  });
+
+  await context.octokit.git.createRef({
+    ...context.repo(),
+    ref: `refs/heads/release-${release}`,
+    sha: commit.data.sha,
+  });
+
+  const projectCreated = await createProjectV2(
+    context,
+    release,
+    context.repo().owner
+  );
+
+  return projectCreated.projectV2;
+};
+
 export const upsertProject = async (
   context: Context,
   release: string,
@@ -15,67 +45,48 @@ export const upsertProject = async (
   },
   base: string = "master"
 ) => {
-  const project = await getProjectsV2(context, release);
+  const project = await getProject(context, release, base);
 
-  if (project) {
-    context.log.info(`Project ${release} already exists`);
-
-    console.log(
-      "upsertProject",
-      JSON.stringify(
-        {
-          release,
-          pr,
-          base,
-        },
-        null,
-        2
-      )
-    );
-
-    /**
-     * Creates the patch branch
-     * Created the pull request based on the new branch
-     * cherry-picks the old pr into the new one
-     */
-
-    if (pr.sha !== null) {
-      const pullRequest = await createPullRequest(
-        context,
-        release,
-        { ...pr, sha: pr.sha },
-        base
-      );
-
-      await addPrToProject(context, pr.id, project.id);
-
-      await addPrToProject(context, pullRequest.data.node_id, project.id);
-
-      await context.octokit.issues.createComment({
-        ...context.issue(),
-        body: `Pull request #${pullRequest.data.number} added to Project: "${project.title}"`,
-      });
-    }
-
+  if (!project) {
     return;
   }
 
-  context.log.info(`Creating project ${release}`);
-
-  const projectCreated = await createProjectV2(
-    context,
-    release,
-    context.repo().owner
+  console.log(
+    "upsertProject",
+    JSON.stringify(
+      {
+        release,
+        pr,
+        base,
+      },
+      null,
+      2
+    )
   );
 
-  await triggerWorkflow(context, base);
+  /**
+   * Creates the patch branch
+   * Created the pull request based on the new branch
+   * cherry-picks the old pr into the new one
+   */
 
-  await addPrToProject(context, pr.id, projectCreated.projectV2.id);
-  // TODO: bark to inform dionisio received the command
-  await context.octokit.issues.createComment({
-    ...context.issue(),
-    body: `Pull request added to Project: "${projectCreated.projectV2.title}"`,
-  });
+  if (pr.sha !== null) {
+    const pullRequest = await createPullRequest(
+      context,
+      release,
+      { ...pr, sha: pr.sha },
+      base
+    );
+
+    await addPrToProject(context, pr.id, project.id);
+
+    await addPrToProject(context, pullRequest.data.node_id, project.id);
+
+    await context.octokit.issues.createComment({
+      ...context.issue(),
+      body: `Pull request #${pullRequest.data.number} added to Project: "${project.title}"`,
+    });
+  }
 };
 
 const createProjectV2 = async (
@@ -104,17 +115,6 @@ const createProjectV2 = async (
       title: string;
     };
   };
-
-const triggerWorkflow = async (context: Context, base: string = "master") =>
-  context.octokit.actions.createWorkflowDispatch({
-    ...context.repo(),
-    inputs: {
-      name: "patch",
-      "base-ref": base,
-    },
-    ref: "refs/heads/develop",
-    workflow_id: "new-release.yml",
-  });
 
 export const getProjectsV2 = async (context: Context, release: string) => {
   const repo = await context.octokit.repos.get(context.repo());

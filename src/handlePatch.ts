@@ -1,5 +1,5 @@
 import { Context } from "probot";
-import SemVer from "semver";
+import semver from "semver";
 import { upsertProject } from "./upsertProject";
 
 export const handlePatch = async ({
@@ -19,7 +19,7 @@ export const handlePatch = async ({
     context.repo()
   );
 
-  const pathRelease = SemVer.inc(latestRelease.data.tag_name, "patch");
+  const pathRelease = semver.inc(latestRelease.data.tag_name, "patch");
   if (!pathRelease) {
     await context.octokit.issues.createComment({
       ...context.issue(),
@@ -28,11 +28,29 @@ export const handlePatch = async ({
     return;
   }
 
-  await upsertProject(context, pathRelease, {
-    id: pr.node_id,
-    sha: pr.merge_commit_sha,
-    title: pr.title,
-    number: pr.number,
-    author: pr.author,
-  });
+  await upsertProject(
+    context,
+    pathRelease,
+    {
+      id: pr.node_id,
+      sha: pr.merge_commit_sha,
+      title: pr.title,
+      number: pr.number,
+      author: pr.author,
+    },
+    latestRelease.data.tag_name
+  );
+
+  await triggerWorkflow(context);
 };
+
+const triggerWorkflow = async (context: Context, base: string = "master") =>
+  context.octokit.actions.createWorkflowDispatch({
+    ...context.repo(),
+    inputs: {
+      name: "patch",
+      "base-ref": base,
+    },
+    ref: "refs/heads/develop",
+    workflow_id: "new-release.yml",
+  });
