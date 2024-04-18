@@ -11,6 +11,9 @@ export const handleBackport = async ({
   pr: {
     merge_commit_sha: string | null;
     node_id: string;
+    title: string;
+    author: string;
+    number: number;
   };
   tags: string[];
 }) => {
@@ -58,7 +61,13 @@ export const handleBackport = async ({
       await upsertProject(
         context,
         tag,
-        { id: pr.node_id, sha: pr.merge_commit_sha },
+        {
+          id: pr.node_id,
+          sha: pr.merge_commit_sha,
+          title: pr.title,
+          number: pr.number,
+          author: pr.author,
+        },
         previousTag
       );
     })

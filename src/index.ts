@@ -2,7 +2,6 @@ import { Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
 import { handlePatch } from "./handlePatch";
 import { handleBackport } from "./handleBackport";
-// import { getProjectsV2 } from "./upsertProject";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
@@ -158,7 +157,10 @@ export = (app: Probot) => {
     if (command === "patch" && !args.trim()) {
       return handlePatch({
         context,
-        pr: pr.data,
+        pr: {
+          ...pr.data,
+          author: pr.data.user?.login!,
+        },
       });
     }
     if (command === "backport" && args.trim()) {
@@ -166,7 +168,7 @@ export = (app: Probot) => {
 
       return handleBackport({
         context,
-        pr: pr.data,
+        pr: { ...pr.data, author: pr.data.user?.login! },
         tags,
       });
     }
@@ -190,6 +192,14 @@ export = (app: Probot) => {
         check_run_id: checkRuns.data.check_runs[0].id,
       })
     );
+  });
+
+  app.on(["projects_v2_item.created"], (context) => {
+    const card = context.payload;
+
+    if (card.projects_v2_item.content_type !== "PullRequest") {
+      return;
+    }
   });
 
   // app.on(["push"], async (context) => {

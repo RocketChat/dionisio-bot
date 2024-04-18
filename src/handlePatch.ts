@@ -10,6 +10,9 @@ export const handlePatch = async ({
   pr: {
     merge_commit_sha: string | null;
     node_id: string;
+    title: string;
+    author: string;
+    number: number;
   };
 }) => {
   const latestRelease = await context.octokit.repos.getLatestRelease(
@@ -28,5 +31,8 @@ export const handlePatch = async ({
   await upsertProject(context, pathRelease, {
     id: pr.node_id,
     sha: pr.merge_commit_sha,
+    title: pr.title,
+    number: pr.number,
+    author: pr.author,
   });
 };

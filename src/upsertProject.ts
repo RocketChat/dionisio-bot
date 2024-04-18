@@ -1,11 +1,18 @@
 // import { cherryPickCommits } from "github-cherry-pick";
 import { Context } from "probot";
 import { addPrToProject } from "./addPrToProject";
+import { createPullRequest } from "./createPullRequest";
 
 export const upsertProject = async (
   context: Context,
   release: string,
-  pr: { id: string; sha: string | null },
+  pr: {
+    id: string;
+    sha: string | null;
+    number: number;
+    title: string;
+    author: string;
+  },
   base: string = "master"
 ) => {
   const project = await getProjectsV2(context, release);
@@ -13,21 +20,29 @@ export const upsertProject = async (
   if (project) {
     context.log.info(`Project ${release} already exists`);
 
-    // if (pr.sha) {
-    //   await cherryPickCommits({
-    //     ...context.repo(),
-    //     commits: [pr.sha],
-    //     head: `backport-${release}-${pr.id}`,
-    //     octokit: context.octokit,
-    //   });
-    // }
+    /**
+     * Creates the patch branch
+     * Created the pull request based on the new branch
+     * cherry-picks the old pr into the new one
+     */
 
-    await addPrToProject(context, pr.id, project.id);
+    if (pr.sha !== null) {
+      const pullRequest = await createPullRequest(
+        context,
+        release,
+        { ...pr, sha: pr.sha },
+        base
+      );
 
-    await context.octokit.issues.createComment({
-      ...context.issue(),
-      body: `Pull request added to Project: "${project.title}"`,
-    });
+      await addPrToProject(context, pr.id, project.id);
+
+      await addPrToProject(context, pullRequest.data.node_id, project.id);
+
+      await context.octokit.issues.createComment({
+        ...context.issue(),
+        body: `Pull request #${pullRequest.data.number} added to Project: "${project.title}"`,
+      });
+    }
 
     return;
   }
