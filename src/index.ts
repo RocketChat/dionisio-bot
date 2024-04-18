@@ -26,13 +26,15 @@ export = (app: Probot) => {
         return;
       }
 
-      await applyLabels(
-        {
-          ...pr.data,
-          milestone: pr.data.milestone?.title,
-        },
-        pr.data.base.ref,
-        context
+      await run(String(pr.data.number), () =>
+        applyLabels(
+          {
+            ...pr.data,
+            milestone: pr.data.milestone?.title,
+          },
+          pr.data.base.ref,
+          context
+        )
       );
     }
   );
@@ -49,13 +51,15 @@ export = (app: Probot) => {
         return;
       }
 
-      await applyLabels(
-        {
-          ...context.payload.pull_request,
-          milestone: context.payload.pull_request.milestone?.title,
-        },
-        context.payload.pull_request.head.ref,
-        context
+      await run(String(context.payload.pull_request.number), () =>
+        applyLabels(
+          {
+            ...context.payload.pull_request,
+            milestone: context.payload.pull_request.milestone?.title,
+          },
+          context.payload.pull_request.head.ref,
+          context
+        )
       );
 
       const { owner, repo } = context.repo();
