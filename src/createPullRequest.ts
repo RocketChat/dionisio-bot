@@ -20,7 +20,7 @@ export const createPullRequest = async (
 ) => {
   const branch = await context.octokit.repos.getBranch({
     ...context.repo(),
-    branch: base,
+    branch: `release-${base}`,
   });
 
   await context.octokit.git.createRef(
@@ -45,7 +45,7 @@ export const createPullRequest = async (
       ...context.repo(),
       title: pr.title,
       head: `backport-${release}-${pr.id}`,
-      base,
+      base: `release-${base}`,
       body: `Backport of #${pr.number}
 
 @${pr.author}
