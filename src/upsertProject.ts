@@ -26,7 +26,7 @@ const getReleaseBranchSha = async (
   const branch = await context.octokit.git
     .getRef({
       ...context.repo(),
-      ref: `refs/heads/release-${release}`,
+      ref: `heads/release-${release}`,
     })
     .catch(() => undefined);
 
