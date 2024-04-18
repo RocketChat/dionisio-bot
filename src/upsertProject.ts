@@ -39,8 +39,6 @@ const getReleaseBranchSha = async (
     ref: base,
   });
 
-  consoleProps("COMMIT", commitBase);
-
   return (
     await context.octokit.git.createRef(
       consoleProps("Creating ref", {
