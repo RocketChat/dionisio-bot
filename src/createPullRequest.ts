@@ -44,7 +44,7 @@ export const createPullRequest = async (
     consoleProps(`Created backport PR`, {
       ...context.repo(),
       title: pr.title,
-      head: `backport-${release}-${pr.id}`,
+      head: `backport-${release}-${pr.number}`,
       base: `release-${release}`,
       body: `Backport of #${pr.number}
 
