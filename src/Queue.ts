@@ -2,7 +2,7 @@ type Chain<T = any> = Promise<T>;
 
 const store = new Map<string, Chain>();
 
-const run = async <T = any>(key: string, fn: () => Promise<T>) => {
+export const run = async <T = any>(key: string, fn: () => Promise<T>) => {
   const chain = store.get(key);
 
   if (!chain) {

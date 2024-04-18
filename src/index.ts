@@ -2,6 +2,7 @@ import { Probot } from "probot";
 import { applyLabels } from "./handleQALabels";
 import { handlePatch } from "./handlePatch";
 import { handleBackport } from "./handleBackport";
+import { run } from "./Queue";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
