@@ -16,7 +16,8 @@ export const createPullRequest = async (
     title: string;
     author: string;
   },
-  commit_sha: string
+  commit_sha: string,
+  assignee: string
 ) => {
   const milestone = (
     await context.octokit.issues.listMilestones({
@@ -51,12 +52,14 @@ export const createPullRequest = async (
       title: pr.title,
       head: `backport-${release}-${pr.number}`,
       base: `release-${release}`,
-      body: `Backport of #${pr.number}
-
-@${pr.author}
-    `,
+      body: `Backport of #${pr.number}`,
     })
   );
+
+  await context.octokit.pulls.requestReviewers({
+    ...context.repo(),
+    reviewers: [pr.author],
+  });
 
   if (milestone) {
     await context.octokit.issues
@@ -64,6 +67,7 @@ export const createPullRequest = async (
         ...context.repo(),
         issue_number: pullRequest.data.number,
         milestone: milestone.number,
+        assignee,
       })
       .catch(() => undefined);
   }

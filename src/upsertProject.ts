@@ -60,7 +60,8 @@ export const upsertProject = async (
     title: string;
     author: string;
   },
-  base: string = "master"
+  base: string,
+  assignee: string
 ) => {
   const project = await getProject(context, release);
 
@@ -94,7 +95,8 @@ export const upsertProject = async (
       context,
       release,
       { ...pr, sha: pr.sha },
-      releaseBranch
+      releaseBranch,
+      assignee
     );
 
     await addPrToProject(context, pr.id, project.id);

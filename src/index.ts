@@ -167,6 +167,7 @@ export = (app: Probot) => {
           ...pr.data,
           author: pr.data.user?.login!,
         },
+        assignee: comment.user.login,
       });
     }
     if (command === "backport" && args?.trim()) {
@@ -178,6 +179,7 @@ export = (app: Probot) => {
             context,
             pr: { ...pr.data, author: pr.data.user?.login! },
             tags,
+            assignee: comment.user.login,
           })
         );
       } catch (e) {

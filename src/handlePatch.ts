@@ -5,6 +5,7 @@ import { upsertProject } from "./upsertProject";
 export const handlePatch = async ({
   context,
   pr,
+  assignee,
 }: {
   context: Context;
   pr: {
@@ -14,6 +15,7 @@ export const handlePatch = async ({
     author: string;
     number: number;
   };
+  assignee: string;
 }) => {
   const latestRelease = await context.octokit.repos.getLatestRelease(
     context.repo()
@@ -38,7 +40,8 @@ export const handlePatch = async ({
       number: pr.number,
       author: pr.author,
     },
-    latestRelease.data.tag_name
+    latestRelease.data.tag_name,
+    assignee
   );
 
   await triggerWorkflow(context);

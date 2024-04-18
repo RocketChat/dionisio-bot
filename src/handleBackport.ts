@@ -6,6 +6,7 @@ export const handleBackport = async ({
   context,
   pr,
   tags,
+  assignee,
 }: {
   context: Context;
   pr: {
@@ -16,6 +17,7 @@ export const handleBackport = async ({
     number: number;
   };
   tags: string[];
+  assignee: string;
 }) => {
   if (tags.length === 0) {
     await context.octokit.issues.createComment({
@@ -28,7 +30,7 @@ export const handleBackport = async ({
   // Filter out the tags that are already in the project
 
   await Promise.allSettled(
-    tags.map(async (tag) => {
+    tags.map(async (tag): Promise<void> => {
       const result = await context.octokit.repos
         .getReleaseByTag({
           ...context.repo(),
@@ -69,7 +71,8 @@ export const handleBackport = async ({
             number: pr.number,
             author: pr.author,
           },
-          previousTag
+          previousTag,
+          assignee
         );
       } catch (e) {
         console.log(e);
