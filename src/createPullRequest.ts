@@ -58,6 +58,7 @@ export const createPullRequest = async (
 
   await context.octokit.pulls.requestReviewers({
     ...context.repo(),
+    pull_number: pullRequest.data.number,
     reviewers: [pr.author],
   });
 
@@ -68,6 +69,7 @@ export const createPullRequest = async (
         issue_number: pullRequest.data.number,
         milestone: milestone.number,
         assignee,
+        assignees: [assignee],
       })
       .catch(() => undefined);
   }
