@@ -1,6 +1,7 @@
 import { Context } from "probot";
 import semver from "semver";
 import { upsertProject } from "./upsertProject";
+import { ErrorCherryPickConflict } from "./errors/ErrorCherryPickConflict";
 
 export const handleBackport = async ({
   context,
@@ -74,8 +75,27 @@ export const handleBackport = async ({
           previousTag,
           assignee
         );
-      } catch (e) {
-        console.log(e);
+      } catch (err) {
+        if (err instanceof ErrorCherryPickConflict) {
+          context.octokit.issues.createComment({
+            ...context.repo(),
+            body: `
+Sorry, I couldn't do that backport because of conflicts. Could you please solve them?
+
+you can do so by running the following commands:
+\`\`\`
+git fetch
+git checkout ${err.arg.head}
+git cherry-pick ${err.arg.commits.join(" ")}
+// solve the conflict
+git push
+\`\`\`
+
+
+after that open a pull request targeting to: ${err.arg.base}
+`,
+          });
+        }
       }
     })
   );
