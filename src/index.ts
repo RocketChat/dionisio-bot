@@ -3,7 +3,7 @@ import { applyLabels } from "./handleQALabels";
 import { handlePatch } from "./handlePatch";
 import { handleBackport } from "./handleBackport";
 import { run } from "./Queue";
-
+import JobQueue from "node-queue-runner";
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
 
@@ -27,22 +27,20 @@ export = (app: Probot) => {
         return;
       }
 
-      await run(String(pr.data.number), () =>
-        applyLabels(
-          {
-            ...pr.data,
-            milestone: pr.data.milestone?.title,
-          },
-          pr.data.base.ref,
-          context
-        )
+      await applyLabels(
+        {
+          ...pr.data,
+          milestone: pr.data.milestone?.title,
+        },
+        pr.data.base.ref,
+        context
       );
     }
   );
 
   app.on(
     [
-      "pull_request.opened",
+      // "pull_request.opened",
       "pull_request.synchronize",
       "pull_request.labeled",
       "pull_request.unlabeled",
@@ -52,15 +50,13 @@ export = (app: Probot) => {
         return;
       }
 
-      await run(String(context.payload.pull_request.number), () =>
-        applyLabels(
-          {
-            ...context.payload.pull_request,
-            milestone: context.payload.pull_request.milestone?.title,
-          },
-          context.payload.pull_request.head.ref,
-          context
-        )
+      await applyLabels(
+        {
+          ...context.payload.pull_request,
+          milestone: context.payload.pull_request.milestone?.title,
+        },
+        context.payload.pull_request.head.ref,
+        context
       );
 
       const { owner, repo } = context.repo();
