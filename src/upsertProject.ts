@@ -23,12 +23,14 @@ const getReleaseBranchSha = async (
   release: string,
   base: string
 ) => {
-  const branch = await context.octokit.git.getRef({
-    ...context.repo(),
-    ref: `release-${release}`,
-  });
+  const branch = await context.octokit.git
+    .getRef({
+      ...context.repo(),
+      ref: `release-${release}`,
+    })
+    .catch(() => undefined);
 
-  if (branch.data) {
+  if (branch?.data) {
     return branch.data.object.sha;
   }
 
