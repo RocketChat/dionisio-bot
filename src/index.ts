@@ -159,7 +159,7 @@ export = (app: Probot) => {
      * creates a project with the latest version
      */
 
-    if (command === "patch" && !args.trim()) {
+    if (command === "patch" && !args?.trim()) {
       return handlePatch({
         context,
         pr: {
@@ -168,7 +168,7 @@ export = (app: Probot) => {
         },
       });
     }
-    if (command === "backport" && args.trim()) {
+    if (command === "backport" && args?.trim()) {
       const tags = args.split(" ").filter((arg) => /\d+\.\d+\.\d+/.test(arg));
 
       try {
