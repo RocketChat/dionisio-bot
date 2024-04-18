@@ -62,7 +62,7 @@ git push
 \`\`\`
 
 
-after that open a pull request targeting to: ${err.arg.base}
+after that just run \`/patch\` again
 `,
       });
     }

@@ -31,30 +31,38 @@ export const createPullRequest = async (
     return tag.title === `${major}.${minor}`;
   });
 
-  await context.octokit.git.createRef(
-    consoleProps(`Create ref for backport`, {
-      ...context.repo(),
-      ref: `refs/heads/backport-${release}-${pr.number}`,
-      sha: commit_sha,
-    })
-  );
+  const ref = await context.octokit.git
+    .createRef(
+      consoleProps(`Create ref for backport`, {
+        ...context.repo(),
+        ref: `refs/heads/backport-${release}-${pr.number}`,
+        sha: commit_sha,
+      })
+    )
+    .catch(() => undefined);
 
-  try {
-    await cherryPick(
-      consoleProps(`Cherry-pick backport`, {
+  /**
+   * if the ref was created we should try to cherry pick
+   * if not just open the pull request
+   */
+  if (ref) {
+    try {
+      await cherryPick(
+        consoleProps(`Cherry-pick backport`, {
+          ...context.repo(),
+          commits: [pr.sha],
+          head: `backport-${release}-${pr.number}`,
+          octokit: context.octokit,
+        })
+      );
+    } catch {
+      throw new ErrorCherryPickConflict({
         ...context.repo(),
         commits: [pr.sha],
         head: `backport-${release}-${pr.number}`,
-        octokit: context.octokit,
-      })
-    );
-  } catch {
-    throw new ErrorCherryPickConflict({
-      ...context.repo(),
-      commits: [pr.sha],
-      head: `backport-${release}-${pr.number}`,
-      base,
-    });
+        base,
+      });
+    }
   }
 
   const pullRequest = await context.octokit.pulls.create(
