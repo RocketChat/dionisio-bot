@@ -1,7 +1,7 @@
 // import { cherryPickCommits } from "github-cherry-pick";
 import { Context } from "probot";
 import { addPrToProject } from "./addPrToProject";
-import { createPullRequest } from "./createPullRequest";
+import { consoleProps, createPullRequest } from "./createPullRequest";
 
 const getProject = async (
   context: Context,
@@ -13,11 +13,13 @@ const getProject = async (
     return project;
   }
 
-  await context.octokit.git.createRef({
-    ...context.repo(),
-    ref: `refs/heads/release-${release}`,
-    sha: commit_sha,
-  });
+  await context.octokit.git.createRef(
+    consoleProps("Creating ref", {
+      ...context.repo(),
+      ref: `refs/heads/release-${release}`,
+      sha: commit_sha,
+    })
+  );
 
   const projectCreated = await createProjectV2(
     context,
@@ -44,6 +46,8 @@ export const upsertProject = async (
     ...context.repo(),
     ref: base,
   });
+
+  consoleProps("COMMIT", commit);
 
   const project = await getProject(context, release, commit.data.sha);
 
