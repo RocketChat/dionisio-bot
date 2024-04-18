@@ -3,23 +3,11 @@ import { Context } from "probot";
 import { addPrToProject } from "./addPrToProject";
 import { consoleProps, createPullRequest } from "./createPullRequest";
 
-const getProject = async (
-  context: Context,
-  release: string,
-  commit_sha: string
-) => {
+const getProject = async (context: Context, release: string) => {
   const project = await getProjectsV2(context, release);
   if (project) {
     return project;
   }
-
-  await context.octokit.git.createRef(
-    consoleProps("Creating ref", {
-      ...context.repo(),
-      ref: `refs/heads/release-${release}`,
-      sha: commit_sha,
-    })
-  );
 
   const projectCreated = await createProjectV2(
     context,
@@ -28,6 +16,38 @@ const getProject = async (
   );
 
   return projectCreated.projectV2;
+};
+
+const getReleaseBranchSha = async (
+  context: Context,
+  release: string,
+  base: string
+) => {
+  const branch = await context.octokit.git.getRef({
+    ...context.repo(),
+    ref: `release-${release}`,
+  });
+
+  if (branch.data) {
+    return branch.data.object.sha;
+  }
+
+  const commitBase = await context.octokit.repos.getCommit({
+    ...context.repo(),
+    ref: base,
+  });
+
+  consoleProps("COMMIT", commitBase);
+
+  return (
+    await context.octokit.git.createRef(
+      consoleProps("Creating ref", {
+        ...context.repo(),
+        ref: `refs/heads/release-${release}`,
+        sha: commitBase.data.sha,
+      })
+    )
+  ).data.object.sha;
 };
 
 export const upsertProject = async (
@@ -42,18 +62,13 @@ export const upsertProject = async (
   },
   base: string = "master"
 ) => {
-  const commit = await context.octokit.repos.getCommit({
-    ...context.repo(),
-    ref: base,
-  });
-
-  consoleProps("COMMIT", commit);
-
-  const project = await getProject(context, release, commit.data.sha);
+  const project = await getProject(context, release);
 
   if (!project) {
     return;
   }
+
+  const releaseBranch = await getReleaseBranchSha(context, release, base);
 
   console.log(
     "upsertProject",
@@ -79,7 +94,7 @@ export const upsertProject = async (
       context,
       release,
       { ...pr, sha: pr.sha },
-      commit.data.sha
+      releaseBranch
     );
 
     await addPrToProject(context, pr.id, project.id);
