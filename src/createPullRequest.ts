@@ -1,5 +1,6 @@
 import { Context } from "probot";
 import { cherryPick } from "./cherryPick";
+import { major } from "semver";
 
 export const consoleProps = <T>(title: string, args: T) => {
   console.log(title, JSON.stringify(args, null, 2));
@@ -18,6 +19,16 @@ export const createPullRequest = async (
   },
   commit_sha: string
 ) => {
+  const milestone = (
+    await context.octokit.issues.listMilestones({
+      ...context.repo(),
+      direction: "desc",
+    })
+  ).data.find((tag) => {
+    const [major, minor] = release.split(".");
+    return tag.title === `${major}.${minor}`;
+  });
+
   await context.octokit.git.createRef(
     consoleProps(`Create ref for backport`, {
       ...context.repo(),
@@ -48,6 +59,13 @@ export const createPullRequest = async (
     })
   );
 
+  if (milestone) {
+    await context.octokit.issues.update({
+      ...context.repo(),
+      issue_numberL: pullRequest.data.number,
+      milestone: milestone.number,
+    });
+  }
   await context.octokit.issues.addLabels({
     ...context.repo(),
     issue_number: pullRequest.data.number,
