@@ -26,7 +26,7 @@ export const handleRebase = async ({
 
   const releaseBrach = await context.octokit.git.getRef({
     ...context.repo(),
-    ref: `release-${release}`,
+    ref: `heads/release-${release}`,
   });
 
   await context.octokit.git.updateRef({
