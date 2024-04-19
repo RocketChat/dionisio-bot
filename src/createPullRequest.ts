@@ -87,7 +87,6 @@ export const createPullRequest = async (
       ...context.repo(),
       issue_number: pullRequest.data.number,
       ...(milestone?.number && { milestone: milestone.number }),
-      assignee,
       assignees: [assignee],
     })
     .catch(() => undefined);

@@ -1,4 +1,3 @@
-import { cherryPickCommits } from "github-cherry-pick";
 import { Context } from "probot";
 
 export const cherryPick = ({
@@ -63,17 +62,17 @@ const cp = async (
       sha,
       force: true,
     });
-    // await octokit.git.deleteRef({
-    //   ...context.repo(),
-    //   ref: `heads/cherry-pick-${base}`,
-    // });
+    await octokit.git.deleteRef({
+      ...context.repo(),
+      ref: `heads/cherry-pick-${base}`,
+    });
     return sha;
   } catch (e) {
     console.log(e);
-    // await octokit.git.deleteRef({
-    //   ...context.repo(),
-    //   ref: `heads/cherry-pick-${base}`,
-    // });
+    await octokit.git.deleteRef({
+      ...context.repo(),
+      ref: `heads/cherry-pick-${base}`,
+    });
 
     throw e;
   }
@@ -101,6 +100,9 @@ const perform = async (
   const {
     data: {
       parents: [{ sha: parentSha }],
+      author,
+      committer,
+      message,
     },
   } = await octokit.git.getCommit({
     ...context.repo(),
@@ -138,7 +140,9 @@ const perform = async (
   // Create the cherry-pick commit with the merge tree
   const { data: cherry } = await octokit.git.createCommit({
     ...context.repo(),
-    message: "cherry-pick",
+    message,
+    author: author,
+    committer,
     tree: mergeTree,
     parents: [branch.commit.sha],
   });
