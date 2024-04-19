@@ -192,12 +192,10 @@ export = (app: Probot) => {
     if (command === "rebase") {
       const [action, release, backportNumber] = pr.data.head.ref.split("-");
 
-      console.log(pr.data.head.ref, action, release, backportNumber);
-
       if (
         action === "backport" &&
         /\d+\.\d+.\d+/.test(release) &&
-        Number.isInteger(backportNumber)
+        Number.isInteger(parseInt(backportNumber))
       ) {
         await handleRebase(
           consoleProps("handleRebase ->>", {
