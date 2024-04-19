@@ -60,7 +60,7 @@ const cp = async (
     // Replace the temp commit with the cherry-pick commit
     await octokit.git.updateRef({
       ...context.repo(),
-      ref: base,
+      ref: `heads/${base}`,
       sha,
       force: true,
     });
