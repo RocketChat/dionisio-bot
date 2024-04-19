@@ -192,18 +192,22 @@ export = (app: Probot) => {
     if (command === "rebase") {
       const [action, release, backportNumber] = pr.data.base.ref.split("-");
 
+      console.log(action, release, backportNumber);
+
       if (
         action != backportNumber &&
         /\d+\.\d+.\d+/.test(release) &&
         Number.isInteger(backportNumber)
       ) {
-        await handleRebase({
-          context,
-          backportNumber: parseInt(backportNumber),
-          release,
-        });
+        await handleRebase(
+          consoleProps("handleRebase ->>", {
+            context,
+            backportNumber: parseInt(backportNumber),
+            release,
+          })
+        );
 
-        context.octokit.reactions.createForIssueComment({
+        await context.octokit.reactions.createForIssueComment({
           ...context.issue(),
           comment_id: comment.id,
           content: "+1",
