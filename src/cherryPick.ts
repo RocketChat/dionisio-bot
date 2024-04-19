@@ -47,7 +47,7 @@ const cp = async (
 
   await octokit.git.createRef({
     ...context.repo(),
-    ref: `refs/head/cherry-pick-${base}`,
+    ref: `refs/heads/cherry-pick-${base}`,
     sha: branchTree,
   });
 
