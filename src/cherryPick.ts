@@ -64,17 +64,17 @@ const cp = async (
       sha,
       force: true,
     });
-    await octokit.git.deleteRef({
-      ...context.repo(),
-      ref: `heads/cherry-pick-${base}`,
-    });
+    // await octokit.git.deleteRef({
+    //   ...context.repo(),
+    //   ref: `heads/cherry-pick-${base}`,
+    // });
     return sha;
   } catch (e) {
     console.log(e);
-    await octokit.git.deleteRef({
-      ...context.repo(),
-      ref: `heads/cherry-pick-${base}`,
-    });
+    // await octokit.git.deleteRef({
+    //   ...context.repo(),
+    //   ref: `heads/cherry-pick-${base}`,
+    // });
 
     throw e;
   }
@@ -141,6 +141,8 @@ const perform = async (
     tree: mergeTree,
     parents: [branchTree],
   });
+
+  console.log(cherry);
 
   // Replace the temp commit with the cherry-pick commit
   await octokit.git.updateRef({
