@@ -52,7 +52,7 @@ export const createPullRequest = async (
           ...context.repo(),
           commits: [pr.sha],
           head: `backport-${release}-${pr.number}`,
-          octokit: context.octokit,
+          context,
         })
       );
     } catch {
