@@ -66,10 +66,10 @@ const cp = async (
     });
     return sha;
   } finally {
-    await octokit.git.deleteRef({
-      ...context.repo(),
-      ref: `heads/cherry-pick-${base}`,
-    });
+    // await octokit.git.deleteRef({
+    //   ...context.repo(),
+    //   ref: `heads/cherry-pick-${base}`,
+    // });
   }
 };
 
