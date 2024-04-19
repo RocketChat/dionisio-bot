@@ -43,7 +43,7 @@ export const handleRebase = async ({
       ...context.repo(),
       commits: [backportPR.data.merge_commit_sha!],
       head: `rebase-backport-${release}-${backportNumber}`,
-      octokit: context.octokit,
+      context,
     });
 
     await context.octokit.git.updateRef({
