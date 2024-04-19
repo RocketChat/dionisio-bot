@@ -55,7 +55,8 @@ export const createPullRequest = async (
           context,
         })
       );
-    } catch {
+    } catch (e) {
+      console.log(e);
       throw new ErrorCherryPickConflict({
         ...context.repo(),
         commits: [pr.sha],
