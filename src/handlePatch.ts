@@ -68,17 +68,4 @@ after that just run \`/patch\` again
     }
     console.log(err);
   }
-
-  await triggerWorkflow(context);
 };
-
-const triggerWorkflow = async (context: Context, base: string = "master") =>
-  context.octokit.actions.createWorkflowDispatch({
-    ...context.repo(),
-    inputs: {
-      name: "patch",
-      "base-ref": base,
-    },
-    ref: "refs/heads/develop",
-    workflow_id: "new-release.yml",
-  });

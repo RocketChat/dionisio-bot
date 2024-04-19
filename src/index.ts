@@ -174,14 +174,14 @@ export = (app: Probot) => {
       const tags = args.split(" ").filter((arg) => /\d+\.\d+\.\d+/.test(arg));
 
       try {
-        await handleBackport(
-          consoleProps("handleBackport", {
-            context,
+        await handleBackport({
+          context,
+          ...consoleProps("handleBackport", {
             pr: { ...pr.data, author: pr.data.user?.login! },
             tags,
             assignee: comment.user.login,
-          })
-        );
+          }),
+        });
       } catch (e) {
         console.log("handleBackport->", e);
       }
@@ -209,13 +209,13 @@ export = (app: Probot) => {
     );
   });
 
-  app.on(["projects_v2_item.created"], (context) => {
-    const card = context.payload;
+  // app.on(["projects_v2_item.created"], (context) => {
+  //   const card = context.payload;
 
-    if (card.projects_v2_item.content_type !== "PullRequest") {
-      return;
-    }
-  });
+  //   if (card.projects_v2_item.content_type !== "PullRequest") {
+  //     return;
+  //   }
+  // });
 
   // app.on(["push"], async (context) => {
   //   if (!context.payload.base_ref?.startsWith("refs/heads/release")) {

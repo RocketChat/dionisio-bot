@@ -39,7 +39,7 @@ const getReleaseBranchSha = async (
     ref: base,
   });
 
-  return (
+  const branchCreated = (
     await context.octokit.git.createRef(
       consoleProps("Creating ref", {
         ...context.repo(),
@@ -48,6 +48,10 @@ const getReleaseBranchSha = async (
       })
     )
   ).data.object.sha;
+
+  await triggerWorkflow(context, base);
+
+  return branchCreated;
 };
 
 export const upsertProject = async (
@@ -170,3 +174,14 @@ export const getProjectsV2 = async (context: Context, release: string) => {
 
   return project;
 };
+
+const triggerWorkflow = async (context: Context, base: string = "master") =>
+  context.octokit.actions.createWorkflowDispatch({
+    ...context.repo(),
+    inputs: {
+      name: "patch",
+      "base-ref": base,
+    },
+    ref: "refs/heads/develop",
+    workflow_id: "new-release.yml",
+  });
