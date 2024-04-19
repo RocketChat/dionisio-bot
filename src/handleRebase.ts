@@ -31,7 +31,7 @@ export const handleRebase = async ({
 
   await context.octokit.git.updateRef({
     ...context.repo(),
-    ref: `backport-${release}-${backportNumber}`,
+    ref: `heads/backport-${release}-${backportNumber}`,
     force: true,
     sha: releaseBrach.data.object.sha,
   });
