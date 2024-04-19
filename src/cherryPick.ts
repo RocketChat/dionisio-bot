@@ -43,12 +43,11 @@ const cp = async (
     ...context.repo(),
     branch: base,
   });
-  const branchTree = branch.commit.commit.tree.sha;
 
   await octokit.git.createRef({
     ...context.repo(),
     ref: `refs/heads/cherry-pick-${base}`,
-    sha: branchTree,
+    sha: branch.commit.sha,
   });
 
   try {
