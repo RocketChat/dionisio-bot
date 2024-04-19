@@ -190,9 +190,7 @@ export = (app: Probot) => {
     }
 
     if (command === "rebase") {
-      const [action, release, backportNumber] = pr.data.base.ref.split("-");
-
-      console.log(action, release, backportNumber);
+      const [action, release, backportNumber] = pr.data.head.ref.split("-");
 
       if (
         action != backportNumber &&
