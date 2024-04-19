@@ -197,10 +197,16 @@ export = (app: Probot) => {
         /\d+\.\d+.\d+/.test(release) &&
         Number.isInteger(backportNumber)
       ) {
-        return handleRebase({
+        await handleRebase({
           context,
           backportNumber: parseInt(backportNumber),
           release,
+        });
+
+        context.octokit.reactions.createForIssueComment({
+          ...context.issue(),
+          comment_id: comment.id,
+          content: "+1",
         });
       }
     }

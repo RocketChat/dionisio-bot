@@ -44,7 +44,7 @@ export const handleRebase = async ({
       octokit: context.octokit,
     });
   } catch (err) {
-    context.octokit.issues.createComment({
+    await context.octokit.issues.createComment({
       ...context.issue(),
       body: `
         Sorry, I couldn't rebase this pull request because of conflicts. Could you please solve them?
@@ -60,6 +60,6 @@ git push
 
 `,
     });
-    console.log(err);
+    throw err;
   }
 };
