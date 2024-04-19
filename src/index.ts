@@ -4,6 +4,7 @@ import { handlePatch } from "./handlePatch";
 import { handleBackport } from "./handleBackport";
 import { run } from "./Queue";
 import { consoleProps } from "./createPullRequest";
+import { handleRebase } from "./handleRebase";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
@@ -186,6 +187,22 @@ export = (app: Probot) => {
         console.log("handleBackport->", e);
       }
       return;
+    }
+
+    if (command === "rebase") {
+      const [action, release, backportNumber] = pr.data.base.ref.split("-");
+
+      if (
+        action != backportNumber &&
+        /\d+\.\d+.\d+/.test(release) &&
+        Number.isInteger(backportNumber)
+      ) {
+        return handleRebase({
+          context,
+          backportNumber: parseInt(backportNumber),
+          release,
+        });
+      }
     }
   });
 
