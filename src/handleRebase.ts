@@ -82,5 +82,6 @@ git push
 
   await context.octokit.git.deleteRef({
     ...context.repo(),
-    ref:  `rebase-backport-${release}-${backportNumber}`
+    ref: `heads/rebase-backport-${release}-${backportNumber}`,
+  });
 };
