@@ -1,6 +1,7 @@
 import { Context } from "probot";
 import semver from "semver";
 import { cherryPick } from "./cherryPick";
+import { consoleProps } from "./createPullRequest";
 
 export const handleRebase = async ({
   context,
@@ -11,11 +12,6 @@ export const handleRebase = async ({
   backportNumber: number;
   release: string;
 }) => {
-  const backportPR = await context.octokit.pulls.get({
-    ...context.issue(),
-    pull_number: backportNumber,
-  });
-
   if (!semver.valid(release)) {
     await context.octokit.issues.createComment({
       ...context.issue(),
@@ -24,24 +20,37 @@ export const handleRebase = async ({
     return;
   }
 
+  const backportPR = await context.octokit.pulls.get({
+    ...context.issue(),
+    pull_number: backportNumber,
+  });
+
   const releaseBrach = await context.octokit.git.getRef({
     ...context.repo(),
     ref: `heads/release-${release}`,
   });
 
-  await context.octokit.git.updateRef({
-    ...context.repo(),
-    ref: `heads/backport-${release}-${backportNumber}`,
-    force: true,
-    sha: releaseBrach.data.object.sha,
-  });
+  await context.octokit.git.createRef(
+    consoleProps("Creating temp ref", {
+      ...context.repo(),
+      ref: `refs/heads/rebase-backport-${release}-${backportNumber}`,
+      sha: releaseBrach.data.object.sha,
+    })
+  );
 
   try {
-    await cherryPick({
+    const newHeadSha = await cherryPick({
       ...context.repo(),
       commits: [backportPR.data.merge_commit_sha!],
-      head: `backport-${release}-${backportNumber}`,
+      head: `rebase-backport-${release}-${backportNumber}`,
       octokit: context.octokit,
+    });
+
+    await context.octokit.git.updateRef({
+      ...context.repo(),
+      ref: `heads/backport-${release}-${backportNumber}`,
+      force: true,
+      sha: newHeadSha,
     });
   } catch (err) {
     await context.octokit.issues.createComment({
@@ -60,6 +69,19 @@ git push
 
 `,
     });
+
+    await context.octokit.git.updateRef({
+      ...context.repo(),
+      ref: `heads/backport-${release}-${backportNumber}`,
+      force: true,
+      sha: releaseBrach.data.object.sha,
+    });
+
     throw err;
   }
+
+  await context.octokit.git.deleteRef({
+    ...context.repo(),
+    ref: `heads/backport-${release}-${backportNumber}`,
+  });
 };
