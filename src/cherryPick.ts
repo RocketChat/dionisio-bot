@@ -53,7 +53,7 @@ const cp = async (
 
   try {
     const sha = await perform(context, {
-      base,
+      base: `cherry-pick-${base}`,
       commit,
     });
 
@@ -64,12 +64,18 @@ const cp = async (
       sha,
       force: true,
     });
+    await octokit.git.deleteRef({
+      ...context.repo(),
+      ref: `heads/cherry-pick-${base}`,
+    });
     return sha;
-  } finally {
-    // await octokit.git.deleteRef({
-    //   ...context.repo(),
-    //   ref: `heads/cherry-pick-${base}`,
-    // });
+  } catch (e) {
+    await octokit.git.deleteRef({
+      ...context.repo(),
+      ref: `heads/cherry-pick-${base}`,
+    });
+
+    throw e;
   }
 };
 
