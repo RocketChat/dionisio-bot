@@ -70,6 +70,7 @@ const cp = async (
     });
     return sha;
   } catch (e) {
+    console.log(e);
     await octokit.git.deleteRef({
       ...context.repo(),
       ref: `heads/cherry-pick-${base}`,
