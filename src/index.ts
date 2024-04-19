@@ -193,7 +193,7 @@ export = (app: Probot) => {
       const [action, release, backportNumber] = pr.data.head.ref.split("-");
 
       if (
-        action != backportNumber &&
+        action === "backport" &&
         /\d+\.\d+.\d+/.test(release) &&
         Number.isInteger(backportNumber)
       ) {
