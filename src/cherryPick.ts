@@ -116,6 +116,8 @@ const perform = async (
     parents: [parentSha],
   });
 
+  console.log("tempCommit", tempCommit);
+
   // Temporarily force the branch over to the temp commit
   await octokit.git.updateRef({
     ...context.repo(),
