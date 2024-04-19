@@ -140,7 +140,7 @@ const perform = async (
     ...context.repo(),
     message: "cherry-pick",
     tree: mergeTree,
-    parents: [branchTree],
+    parents: [branch.commit.sha],
   });
 
   console.log(cherry);
