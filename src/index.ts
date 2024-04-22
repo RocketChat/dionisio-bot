@@ -44,7 +44,7 @@ export = (app: Probot) => {
 
   app.on(
     [
-      // "pull_request.opened",
+      "pull_request.opened",
       "pull_request.synchronize",
       "pull_request.labeled",
       "pull_request.unlabeled",
