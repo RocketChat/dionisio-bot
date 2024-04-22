@@ -13,7 +13,9 @@ export const run = async <T = any>(key: string, fn: () => Promise<T>) => {
     return;
   }
 
-  store.set(key, chain.finally(fn));
+  const c = chain.finally(fn);
 
-  await chain;
+  store.set(key, c);
+
+  await c;
 };
