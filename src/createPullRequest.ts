@@ -25,6 +25,7 @@ export const createPullRequest = async (
     await context.octokit.issues.listMilestones({
       ...context.repo(),
       direction: "desc",
+      state: "all",
     })
   ).data.find((tag) => {
     const [major, minor] = release.split(".");
