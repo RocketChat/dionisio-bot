@@ -12,7 +12,7 @@ const getProject = async (context: Context, release: string) => {
   const projectCreated = await createProjectV2(
     context,
     release,
-    context.repo().owner
+    "MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4" ?? context.repo().owner
   );
 
   return projectCreated.projectV2;
