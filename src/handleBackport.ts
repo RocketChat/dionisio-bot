@@ -2,6 +2,7 @@ import { Context } from "probot";
 import semver from "semver";
 import { upsertProject } from "./upsertProject";
 import { ErrorCherryPickConflict } from "./errors/ErrorCherryPickConflict";
+import { consoleProps } from "./createPullRequest";
 
 export const handleBackport = async ({
   context,
@@ -56,22 +57,26 @@ export const handleBackport = async ({
       const previousTag =
         semver.major(tag) + "." + semver.minor(tag) + "." + ver;
 
-      await context.octokit.repos.getReleaseByTag({
-        ...context.repo(),
-        tag: previousTag,
-      });
-
+      try {
+        await context.octokit.repos.getReleaseByTag({
+          ...context.repo(),
+          tag: previousTag,
+        });
+      } catch (err) {
+        console.log("Failed to get previous tag", previousTag, err);
+        throw err;
+      }
       try {
         await upsertProject(
           context,
           tag,
-          {
+          consoleProps("upsertProject", {
             id: pr.node_id,
             sha: pr.merge_commit_sha,
             title: pr.title,
             number: pr.number,
             author: pr.author,
-          },
+          }),
           previousTag,
           assignee
         );
