@@ -34,6 +34,7 @@ export const handleBackport = async ({
   try {
     await Promise.allSettled(
       tags.map(async (tag): Promise<void> => {
+        console.log("tag", tag);
         const result = await context.octokit.repos
           .getReleaseByTag({
             ...context.repo(),
@@ -51,12 +52,16 @@ export const handleBackport = async ({
 
         const ver = semver.patch(tag) - 1;
 
+        console.log("ver", ver);
+
         if (ver <= 0) {
           return;
         }
 
         const previousTag =
           semver.major(tag) + "." + semver.minor(tag) + "." + ver;
+
+        console.log("previousTag", previousTag);
 
         try {
           await context.octokit.repos.getReleaseByTag({
