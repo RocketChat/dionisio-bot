@@ -6,6 +6,7 @@ import { consoleProps, createPullRequest } from "./createPullRequest";
 const getProject = async (context: Context, release: string) => {
   const project = await getProjectsV2(context, release);
   if (project) {
+    console.log("project found ", project);
     return project;
   }
 
@@ -15,6 +16,7 @@ const getProject = async (context: Context, release: string) => {
     "MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4" ?? context.repo().owner
   );
 
+  console.log("project created", projectCreated);
   return projectCreated.projectV2;
 };
 
