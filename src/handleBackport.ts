@@ -54,7 +54,7 @@ export const handleBackport = async ({
 
         console.log("ver", ver);
 
-        if (ver <= 0) {
+        if (ver < 0) {
           return;
         }
 
