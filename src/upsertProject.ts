@@ -23,7 +23,8 @@ const getProject = async (context: Context, release: string) => {
 const getReleaseBranchSha = async (
   context: Context,
   release: string,
-  base: string
+  base: string,
+  workflowTarget?: string
 ) => {
   const branch = await context.octokit.git
     .getRef({
@@ -51,7 +52,7 @@ const getReleaseBranchSha = async (
     )
   ).data.object.sha;
 
-  await triggerWorkflow(context, base);
+  await triggerWorkflow(context, workflowTarget ?? base);
 
   return branchCreated;
 };
@@ -67,7 +68,8 @@ export const upsertProject = async (
     author: string;
   },
   base: string,
-  assignee: string
+  assignee: string,
+  workflowTarget?: string
 ) => {
   const project = await getProject(context, release);
 
@@ -75,7 +77,12 @@ export const upsertProject = async (
     return;
   }
 
-  const releaseBranch = await getReleaseBranchSha(context, release, base);
+  const releaseBranch = await getReleaseBranchSha(
+    context,
+    release,
+    base,
+    workflowTarget
+  );
 
   console.log(
     "upsertProject",

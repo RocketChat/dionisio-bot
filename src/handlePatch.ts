@@ -43,7 +43,8 @@ export const handlePatch = async ({
         author: pr.author,
       },
       latestRelease.data.tag_name,
-      assignee
+      assignee,
+      "master"
     );
   } catch (err) {
     if (err instanceof ErrorCherryPickConflict) {
