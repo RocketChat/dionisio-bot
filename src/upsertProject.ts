@@ -17,7 +17,7 @@ const getProject = async (context: Context, release: string) => {
   );
 
   console.log("project created", projectCreated);
-  return projectCreated.projectV2;
+  return projectCreated.createProjectV2.projectV2;
 };
 
 const getReleaseBranchSha = async (
@@ -74,7 +74,7 @@ export const upsertProject = async (
   const project = await getProject(context, release);
 
   if (!project) {
-    return;
+    throw new Error("Something went wrong during getProject");
   }
 
   const releaseBranch = await getReleaseBranchSha(
@@ -145,9 +145,11 @@ const createProjectV2 = async (
             }
           `,
   })) as {
-    projectV2: {
-      id: string;
-      title: string;
+    createProjectV2: {
+      projectV2: {
+        id: string;
+        title: string;
+      };
     };
   };
 
