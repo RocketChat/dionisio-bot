@@ -66,6 +66,8 @@ export const applyLabels = async (
     milestone?: string;
     url: string;
   },
+  owner: string,
+  repo: string,
   ref: string,
   context: Context<
     | "pull_request.opened"
@@ -86,8 +88,8 @@ export const applyLabels = async (
     const { data } = await context.octokit.request(
       "GET /repos/{owner}/{repo}/contents/{path}",
       {
-        owner: context.payload.repository.owner.login,
-        repo: context.payload.repository.name,
+        owner,
+        repo,
         path: "package.json",
         ref,
         headers: {

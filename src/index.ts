@@ -36,6 +36,8 @@ export = (app: Probot) => {
             ...pr.data,
             milestone: pr.data.milestone?.title,
           },
+          pr.data.head.repo?.owner.login ?? pr.data.base.repo.owner.login,
+          pr.data.head.repo?.name ?? pr.data.base.repo.name,
           pr.data.base.ref,
           context
         )
@@ -63,6 +65,8 @@ export = (app: Probot) => {
             ...context.payload.pull_request,
             milestone: context.payload.pull_request.milestone?.title,
           },
+          context.payload.pull_request.head.repo.owner.login,
+          context.payload.pull_request.head.repo.name,
           context.payload.pull_request.head.ref,
           context
         )
