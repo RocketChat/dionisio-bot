@@ -55,7 +55,7 @@ export = (app: Probot) => {
         return;
       }
 
-      console.log(JSON.stringify(context.payload.pull_request, null, 2));
+      console.log(JSON.stringify(context.payload, null, 2));
 
       await run(String(context.payload.pull_request.number), () =>
         applyLabels(
