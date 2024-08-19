@@ -221,7 +221,7 @@ export = (app: Probot) => {
       })
     );
 
-    context.octokit.checks.update(
+   await context.octokit.checks.update(
       context.repo({
         name: "Auto label QA",
         conclusion: "success",
