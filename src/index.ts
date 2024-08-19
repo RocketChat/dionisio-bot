@@ -221,16 +221,20 @@ export = (app: Probot) => {
       })
     );
 
-   await context.octokit.checks.update(
-      context.repo({
-        name: "Auto label QA",
-        conclusion: "success",
-        output: {
-          title: "Labels are properly applied",
-          summary: "Labels are properly applied",
-        },
-        check_run_id: checkRuns.data.check_runs[0].id,
-      })
+    console.log(JSON.stringify(checkRuns.data.check_runs, null, 2));
+
+    console.log(
+      await context.octokit.checks.update(
+        context.repo({
+          name: "Auto label QA",
+          conclusion: "success",
+          output: {
+            title: "Labels are properly applied",
+            summary: "Labels are properly applied",
+          },
+          check_run_id: checkRuns.data.check_runs[0].id,
+        })
+      )
     );
   });
 
