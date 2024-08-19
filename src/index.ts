@@ -5,6 +5,7 @@ import { handleBackport } from "./handleBackport";
 import { run } from "./Queue";
 import { consoleProps } from "./createPullRequest";
 import { handleRebase } from "./handleRebase";
+import { CANCELLED } from "dns";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
@@ -53,6 +54,8 @@ export = (app: Probot) => {
       if (context.payload.pull_request.closed_at) {
         return;
       }
+
+      console.log(JSON.stringify(context.payload.pull_request, null, 2));
 
       await run(String(context.payload.pull_request.number), () =>
         applyLabels(
@@ -221,26 +224,16 @@ export = (app: Probot) => {
       })
     );
 
-    console.log(
-      "BBBBB->",
-      JSON.stringify(checkRuns.data.check_runs[0], null, 2)
-    );
-
-    console.log("CCCCCA->", context.payload.check_suite.id);
-
-    console.log(
-      "ASDASDA->",
-      await context.octokit.checks.update(
-        context.repo({
-          name: "Auto label QA",
-          conclusion: "success",
-          output: {
-            title: "Labels are properly applied",
-            summary: "Labels are properly applied",
-          },
-          check_run_id: checkRuns.data.check_runs[0].id,
-        })
-      )
+    await context.octokit.checks.update(
+      context.repo({
+        name: "Auto label QA",
+        conclusion: "success",
+        output: {
+          title: "Labels are properly applied",
+          summary: "Labels are properly applied",
+        },
+        check_run_id: checkRuns.data.check_runs[0].id,
+      })
     );
   });
 
