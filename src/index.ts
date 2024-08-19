@@ -223,7 +223,10 @@ export = (app: Probot) => {
 
     console.log("CCCCCA->", context.payload.check_suite.id);
 
-    console.log("BBBBB->", JSON.stringify(checkRuns.data.check_runs, null, 2));
+    console.log(
+      "BBBBB->",
+      JSON.stringify(checkRuns.data.check_runs[0], null, 2)
+    );
 
     console.log(
       "ASDASDA->",
