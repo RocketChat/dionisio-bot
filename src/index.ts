@@ -221,9 +221,12 @@ export = (app: Probot) => {
       })
     );
 
-    console.log(JSON.stringify(checkRuns.data.check_runs, null, 2));
+    console.log("CCCCCA->", context.payload.check_suite.id);
+
+    console.log("BBBBB->", JSON.stringify(checkRuns.data.check_runs, null, 2));
 
     console.log(
+      "ASDASDA->",
       await context.octokit.checks.update(
         context.repo({
           name: "Auto label QA",
