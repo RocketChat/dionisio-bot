@@ -126,12 +126,6 @@ export const applyLabels = async (
       version.startsWith(m)
     );
 
-    console.log({
-      packageVersion: version,
-      targetingVersion,
-      isTargetingRightVersion,
-      ref,
-    });
     /**
      * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
      * they were causing confusion, where people were assuming that PR was not being tested
