@@ -100,31 +100,6 @@ export = (app: Probot) => {
     }
   );
 
-  app.on(["check_suite.requested"], async function check(context) {
-    const startTime = new Date();
-    // Do stuff
-    const { head_branch: headBranch, head_sha: headSha } =
-      context.payload.check_suite;
-
-    context.payload;
-
-    context.octokit.checks.create(
-      context.repo({
-        name: "Auto label QA",
-        head_branch: headBranch,
-        head_sha: headSha,
-        status: "completed",
-        started_at: startTime,
-        conclusion: "success",
-        completed_at: new Date(),
-        output: {
-          title: "Labels are properly applied",
-          summary: "Labels are properly applied",
-        },
-      })
-    );
-  });
-
   app.on(["issue_comment.created"], async (context): Promise<void> => {
     const { comment, issue } = context.payload;
 
@@ -219,6 +194,31 @@ export = (app: Probot) => {
         });
       }
     }
+  });
+
+  app.on(["check_suite.requested"], async function check(context) {
+    const startTime = new Date();
+    // Do stuff
+    const { head_branch: headBranch, head_sha: headSha } =
+      context.payload.check_suite;
+
+    console.log("AAAAAAAA->", headBranch, headSha);
+
+    context.octokit.checks.create(
+      context.repo({
+        name: "Auto label QA",
+        head_branch: headBranch,
+        head_sha: headSha,
+        status: "completed",
+        started_at: startTime,
+        conclusion: "success",
+        completed_at: new Date(),
+        output: {
+          title: "Labels are properly applied",
+          summary: "Labels are properly applied",
+        },
+      })
+    );
   });
 
   app.on(["check_suite.rerequested"], async function check(context) {
