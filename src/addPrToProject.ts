@@ -1,24 +1,20 @@
-import { Context } from "probot";
+import { Context } from 'probot';
 
-export const addPrToProject = (
-  context: Context,
-  pr: string,
-  project: string
-) => {
-  console.log(
-    `addPrToProject ->>`,
-    JSON.stringify(
-      {
-        project,
-        pr,
-      },
-      null,
-      2
-    )
-  );
+export const addPrToProject = (context: Context, pr: string, project: string) => {
+	console.log(
+		`addPrToProject ->>`,
+		JSON.stringify(
+			{
+				project,
+				pr,
+			},
+			null,
+			2,
+		),
+	);
 
-  return context.octokit.graphql({
-    query: `mutation($project:ID!, $pr:ID!) {
+	return context.octokit.graphql({
+		query: `mutation($project:ID!, $pr:ID!) {
     addProjectV2ItemById(input: {projectId: $project, contentId: $pr}) {
       item {
         id
@@ -26,7 +22,7 @@ export const addPrToProject = (
     }
   }`,
 
-    project,
-    pr,
-  });
+		project,
+		pr,
+	});
 };
