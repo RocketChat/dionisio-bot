@@ -9,7 +9,7 @@ const getProjects = async (
   octokit: Context["octokit"],
   url: string
 ): Promise<boolean> => {
-  const query = `query ($pull_request_url: URI!){ 
+  const query = `query ($pull_request_url: URI!){
     totalCount :resource(url:$pull_request_url) {
       ... on PullRequest {
         projectsV2{
@@ -41,22 +41,6 @@ const getProjects = async (
 //     }
 //   }
 // }
-
-const getProjectByName = async (context: Context, name: string) => {
-  const result = (await context.octokit.graphql(
-    `query {
-      repository(owner: "RocketChat", name: "Rocket.Chat") {
-        projectsV2(query: "${name}", last: 1) {
-          nodes {
-            number
-          }
-        }
-      }
-    }`
-  )) as { repository: { projectsV2: { nodes: { number: string }[] } } };
-
-  return result.repository.projectsV2.nodes[0];
-};
 
 export const applyLabels = async (
   pullRequest: {
@@ -107,7 +91,7 @@ export const applyLabels = async (
 
     const targetingVersion = [pullRequest.milestone]
       .filter(Boolean)
-      .filter((milestone) => /(\d+\.\d+(\.\d+)?)/.test(milestone!));
+      .filter((milestone) => milestone && /(\d+\.\d+(\.\d+)?)/.test(milestone));
 
     const hasMilestone = Boolean(
       pullRequest.milestone ||
@@ -187,10 +171,10 @@ export const applyLabels = async (
       hasMilestone,
       hasInvalidTitle,
       wrongVersion:
-        hasMilestone && !isTargetingRightVersion
+        hasMilestone && !isTargetingRightVersion && targetingVersion[0]
           ? {
               currentVersion: version,
-              targetVersion: targetingVersion[0]!,
+              targetVersion: targetingVersion[0],
             }
           : undefined,
     });

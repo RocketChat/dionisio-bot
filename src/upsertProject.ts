@@ -13,7 +13,7 @@ const getProject = async (context: Context, release: string) => {
   const projectCreated = await createProjectV2(
     context,
     release,
-    "MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4" ?? context.repo().owner,
+    "MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4",// ?? context.repo().owner,
   );
 
   console.log("project created", projectCreated);
@@ -187,7 +187,7 @@ export const getProjectsV2 = async (context: Context, release: string) => {
   return project;
 };
 
-const triggerWorkflow = async (context: Context, base: string = "master") =>
+const triggerWorkflow = async (context: Context, base = "master") =>
   context.octokit.actions.createWorkflowDispatch({
     ...context.repo(),
     inputs: {

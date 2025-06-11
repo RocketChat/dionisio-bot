@@ -1,7 +1,20 @@
-node_modules
 npm-debug.log
 *.pem
 !mock-cert.pem
 .env
 coverage
 lib
+
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# yarn
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions

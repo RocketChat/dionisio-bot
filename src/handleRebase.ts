@@ -39,25 +39,27 @@ export const handleRebase = async ({
   );
 
   try {
-    const newHeadSha = await cherryPick({
-      ...context.repo(),
-      commits: [backportPR.data.merge_commit_sha!],
-      head: `rebase-backport-${release}-${backportNumber}`,
-      context,
-    });
+    if (backportPR.data.merge_commit_sha) {
+      const newHeadSha = await cherryPick({
+        ...context.repo(),
+        commits: [backportPR.data.merge_commit_sha],
+        head: `rebase-backport-${release}-${backportNumber}`,
+        context,
+      });
 
-    await context.octokit.git.updateRef({
-      ...context.repo(),
-      ref: `heads/backport-${release}-${backportNumber}`,
-      force: true,
-      sha: newHeadSha,
-    });
+      await context.octokit.git.updateRef({
+        ...context.repo(),
+        ref: `heads/backport-${release}-${backportNumber}`,
+        force: true,
+        sha: newHeadSha,
+      });
+    }
   } catch (err) {
     await context.octokit.issues.createComment({
       ...context.issue(),
       body: `
         Sorry, I couldn't rebase this pull request because of conflicts. Could you please solve them?
-        
+
         you can do so by running the following commands:
 \`\`\`
 git fetch
