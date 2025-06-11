@@ -5,7 +5,6 @@ import { handleBackport } from "./handleBackport";
 import { run } from "./Queue";
 import { consoleProps } from "./createPullRequest";
 import { handleRebase } from "./handleRebase";
-import { CANCELLED } from "dns";
 
 export = (app: Probot) => {
   app.log.useLevelLabels = false;
@@ -57,6 +56,12 @@ export = (app: Probot) => {
         return;
       }
 
+      const { repo: ctxRepo } = context.payload.pull_request.head;
+
+      if (!ctxRepo || !ctxRepo.owner || !ctxRepo.name) {
+        return;
+      }
+
       console.log(JSON.stringify(context.payload, null, 2));
 
       await run(String(context.payload.pull_request.number), () =>
@@ -65,8 +70,8 @@ export = (app: Probot) => {
             ...context.payload.pull_request,
             milestone: context.payload.pull_request.milestone?.title,
           },
-          context.payload.pull_request.head.repo.owner.login,
-          context.payload.pull_request.head.repo.name,
+          ctxRepo.owner.login,
+          ctxRepo.name,
           context.payload.pull_request.head.ref,
           context
         )
@@ -148,7 +153,7 @@ export = (app: Probot) => {
         context,
         pr: {
           ...pr.data,
-          author: pr.data.user?.login!,
+          author: pr.data.user?.login,
         },
         assignee: comment.user.login,
       });
@@ -160,7 +165,7 @@ export = (app: Probot) => {
         await handleBackport({
           context,
           ...consoleProps("handleBackport", {
-            pr: { ...pr.data, author: pr.data.user?.login! },
+            pr: { ...pr.data, author: pr.data.user?.login },
             tags,
             assignee: comment.user.login,
           }),
@@ -210,9 +215,9 @@ export = (app: Probot) => {
         head_branch: headBranch,
         head_sha: headSha,
         status: "completed",
-        started_at: startTime,
+        started_at: startTime.toISOString(),
         conclusion: "success",
-        completed_at: new Date(),
+        completed_at: new Date().toISOString(),
         output: {
           title: "Labels are properly applied",
           summary: "Labels are properly applied",
