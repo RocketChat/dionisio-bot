@@ -1,8 +1,11 @@
-FROM node:18-slim
+FROM node:22-slim
+
 WORKDIR /usr/src/app
-COPY package.json package-lock.json ./
-RUN npm ci --production
-RUN npm cache clean --force
-ENV NODE_ENV="production"
+
 COPY . .
-CMD [ "npm", "start" ]
+
+RUN corepack enable && yarn install && yarn build
+
+ENV NODE_ENV="production"
+
+CMD [ "yarn", "start" ]
