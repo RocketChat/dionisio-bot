@@ -14,6 +14,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit --skipLibCheck",
+    "lint": "eslint ./src",
     "start": "probot run ./lib/index.js",
     "test": "jest"
   },
