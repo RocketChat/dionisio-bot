@@ -13,7 +13,7 @@ const getProject = async (context: Context, release: string) => {
   const projectCreated = await createProjectV2(
     context,
     release,
-    "MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4" ?? context.repo().owner
+    "MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4" ?? context.repo().owner,
   );
 
   console.log("project created", projectCreated);
@@ -24,7 +24,7 @@ const getReleaseBranchSha = async (
   context: Context,
   release: string,
   base: string,
-  workflowTarget?: string
+  workflowTarget?: string,
 ) => {
   const branch = await context.octokit.git
     .getRef({
@@ -48,7 +48,7 @@ const getReleaseBranchSha = async (
         ...context.repo(),
         ref: `refs/heads/release-${release}`,
         sha: commitBase.data.sha,
-      })
+      }),
     )
   ).data.object.sha;
 
@@ -69,7 +69,7 @@ export const upsertProject = async (
   },
   base: string,
   assignee: string,
-  workflowTarget?: string
+  workflowTarget?: string,
 ) => {
   const project = await getProject(context, release);
 
@@ -81,7 +81,7 @@ export const upsertProject = async (
     context,
     release,
     base,
-    workflowTarget
+    workflowTarget,
   );
 
   console.log(
@@ -93,8 +93,8 @@ export const upsertProject = async (
         base,
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   /**
@@ -110,7 +110,7 @@ export const upsertProject = async (
       { ...pr, sha: pr.sha },
       releaseBranch,
       base,
-      assignee
+      assignee,
     );
 
     await addPrToProject(context, pr.id, project.id);
@@ -127,7 +127,7 @@ export const upsertProject = async (
 const createProjectV2 = async (
   context: Context,
   release: string,
-  owner: string
+  owner: string,
 ) =>
   (await context.octokit.graphql({
     query: `
@@ -140,6 +140,7 @@ const createProjectV2 = async (
               ){
                 projectV2 {
                   id
+                  title
                 }
               }
             }
@@ -180,7 +181,7 @@ export const getProjectsV2 = async (context: Context, release: string) => {
   };
 
   const project = projects.organization.projectsV2.nodes.find(
-    (project) => project.title === `Patch ${release}`
+    (project) => project.title === `Patch ${release}`,
   );
 
   return project;
