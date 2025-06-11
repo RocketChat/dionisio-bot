@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "github-cherry-pick": "^1.1.0",
-    "probot": "^12.2.4",
+    "probot": "^13.4.3",
     "semver": "^7.6.0"
   },
   "devDependencies": {
