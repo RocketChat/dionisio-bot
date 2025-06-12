@@ -126,6 +126,13 @@ export = (app: Probot) => {
 		const [, command, args] = comment.body.match(matcher) || [];
 
 		if (command === 'bark' || command === 'howl') {
+			// add a reaction to the comment
+			await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: '+1',
+			});
+
 			await context.octokit.issues.createComment({
 				...context.issue(),
 				body: Math.random() > 0.5 ? 'AU AU' : 'woof',
@@ -141,6 +148,13 @@ export = (app: Probot) => {
 		 */
 
 		if (command === 'patch' && !args?.trim()) {
+			// add a reaction to the comment
+			await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: '+1',
+			});
+
 			return handlePatch({
 				context,
 				pr: {
@@ -154,6 +168,13 @@ export = (app: Probot) => {
 			const tags = args.split(' ').filter((arg) => /\d+\.\d+\.\d+/.test(arg));
 
 			try {
+				// add a reaction to the comment
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '+1',
+				});
+
 				await handleBackport({
 					context,
 					...consoleProps('handleBackport', {
@@ -163,6 +184,12 @@ export = (app: Probot) => {
 					}),
 				});
 			} catch (e) {
+				// add a reaction to the comment
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '-1',
+				});
 				console.log('handleBackport->', e);
 			}
 			return;
@@ -172,6 +199,12 @@ export = (app: Probot) => {
 			const [action, release, backportNumber] = pr.data.head.ref.split('-');
 
 			if (action === 'backport' && /\d+\.\d+.\d+/.test(release) && Number.isInteger(parseInt(backportNumber))) {
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '+1',
+				});
+
 				await handleRebase(
 					consoleProps('handleRebase ->>', {
 						context,
@@ -179,12 +212,6 @@ export = (app: Probot) => {
 						release,
 					}),
 				);
-
-				await context.octokit.reactions.createForIssueComment({
-					...context.issue(),
-					comment_id: comment.id,
-					content: '+1',
-				});
 			}
 		}
 	});
