@@ -46,6 +46,7 @@ export const applyLabels = async (
 		mergeable_state: string;
 		milestone?: string;
 		url: string;
+		number: number;
 	},
 	owner: string,
 	repo: string,
@@ -130,6 +131,9 @@ export const applyLabels = async (
 			return true;
 		});
 
+		const addedLabels = newLabels.filter((label) => !originalLabels.includes(label));
+		const removedLabels = originalLabels.filter((label) => !newLabels.includes(label));
+
 		// list all comments on the PR
 		// get the first from the bot
 		// if have a message, edit it
@@ -158,7 +162,19 @@ export const applyLabels = async (
 
 		// compares if the message is the same as the one in the comment
 		// if it is, it does not update the comment
-		if (botComment && botComment.body === message) {
+		const ignoreUpdate = botComment && botComment.body === message;
+
+		console.log('changing labels ->', {
+			sender: context.payload.sender.login,
+			prNumber: pullRequest.number,
+			ignoreUpdate,
+			originalLabels,
+			newLabels,
+			addedLabels,
+			removedLabels,
+		});
+
+		if (ignoreUpdate) {
 			return;
 		}
 
