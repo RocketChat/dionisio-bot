@@ -253,6 +253,12 @@ export = (app: Probot) => {
 					content: '-1',
 				});
 				console.log('handleJira->', e);
+			} finally {
+				await context.octokit.reactions.deleteForCommitComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: 'eyes',
+				});
 			}
 		}
 

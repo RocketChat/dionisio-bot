@@ -117,19 +117,5 @@ export const handleJira = async ({ context, boardName, pr, requestedBy, commentI
 		body: `${pr.body?.trim() || 'no description'} \n\n Task: [${task.key}]`,
 	});
 
-	const data = (await response.json()) as { key?: string };
-	const issueKey = data.key;
-
-	if (!issueKey) {
-		throw new Error('Jira response did not return issue key');
-	}
-
-	const issueUrl = `${jiraBaseUrl}/browse/${issueKey}`;
-
-	await context.octokit.reactions.createForIssueComment({
-		...context.issue(),
-		comment_id: commentId,
-		content: '+1',
-	});
-	return issueUrl;
+	return task.key ?? '';
 };
