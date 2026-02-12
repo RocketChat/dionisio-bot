@@ -237,6 +237,7 @@ export = (app: Probot) => {
 						body: pr.data.body,
 						html_url: pr.data.html_url,
 						labels: pr.data.labels.map((label) => label.name),
+						milestone: pr.data.milestone?.title ?? undefined,
 						user: pr.data.user,
 					},
 					requestedBy: comment.user.login,

@@ -14,6 +14,7 @@ interface HandleJiraArg {
 		body: string | null;
 		html_url: string;
 		labels: string[];
+		milestone?: string | null;
 		user?: {
 			login?: string;
 		} | null;
@@ -50,6 +51,7 @@ export const handleJira = async ({ context, boardName, parentTaskKey, pr, reques
 				name: isSubtask ? 'Sub-task' : 'Task',
 			},
 			...(hasCommunityLabel ? { labels: ['community'] } : {}),
+			...(pr.milestone?.trim() ? { fixVersions: [{ name: pr.milestone.trim() }] } : {}),
 			description: {
 				type: 'doc',
 				version: 1,
