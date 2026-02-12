@@ -5,6 +5,7 @@ import { handleBackport } from './handleBackport';
 import { run } from './Queue';
 import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
+import { handleJira } from './handleJira';
 
 export = (app: Probot) => {
 	app.log.useLevelLabels = false;
@@ -213,6 +214,55 @@ export = (app: Probot) => {
 					}),
 				);
 			}
+		}
+
+		if (command === 'jira' && args?.trim()) {
+			const boardName = args.trim().replace(/^["']|["']$/g, '');
+
+			await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: 'eyes',
+			});
+
+			try {
+				await handleJira({
+					context,
+					boardName,
+					pr: {
+						number: pr.data.number,
+						title: pr.data.title,
+						body: pr.data.body,
+						html_url: pr.data.html_url,
+						labels: pr.data.labels.map((label) => label.name),
+						user: pr.data.user,
+					},
+					requestedBy: comment.user.login,
+					commentId: comment.id,
+				});
+
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '+1',
+				});
+			} catch (e) {
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '-1',
+				});
+				console.log('handleJira->', e);
+			}
+		}
+
+		if (command === 'jira' && !args?.trim()) {
+			// reacts with thinking face
+			await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: 'confused',
+			});
 		}
 	});
 

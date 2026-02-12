@@ -1,0 +1,137 @@
+import { Context } from 'probot';
+
+interface HandleJiraArg {
+	context: Context;
+	boardName: string;
+	pr: {
+		number: number;
+		title: string;
+		body: string | null;
+		html_url: string;
+		labels: string[];
+		user?: {
+			login?: string;
+		} | null;
+	};
+	requestedBy: string;
+	commentId: number;
+}
+
+const getEnv = (name: string): string => {
+	const value = process.env[name];
+
+	if (!value?.trim()) {
+		throw new Error(`Missing required env var: ${name}`);
+	}
+
+	return value.trim();
+};
+
+export const handleJira = async ({ context, boardName, pr, requestedBy, commentId }: HandleJiraArg): Promise<string> => {
+	const jiraBaseUrl = getEnv('JIRA_BASE_URL').replace(/\/$/, '');
+	const jiraEmail = getEnv('JIRA_EMAIL');
+	const jiraApiToken = getEnv('JIRA_API_TOKEN');
+	const hasCommunityLabel = pr.labels.some((label) => label.toLowerCase() === 'community');
+
+	const auth = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64');
+	const payload = {
+		fields: {
+			project: {
+				key: boardName,
+			},
+			summary: `[PR #${pr.number}] ${pr.title}`,
+			issuetype: {
+				name: 'Task',
+			},
+			...(hasCommunityLabel ? { labels: ['community'] } : {}),
+			description: {
+				type: 'doc',
+				version: 1,
+				content: [
+					{
+						type: 'paragraph',
+						content: [
+							{
+								type: 'text',
+								text: 'Task automatically created by dionisio-bot.',
+							},
+						],
+					},
+					{
+						type: 'paragraph',
+						content: [
+							{
+								type: 'text',
+								text: `PR: ${pr.html_url}`,
+							},
+						],
+					},
+					{
+						type: 'paragraph',
+						content: [
+							{
+								type: 'text',
+								text: `PR description: ${pr.body?.trim() || 'no description'}`,
+							},
+						],
+					},
+					{
+						type: 'paragraph',
+						content: [
+							{
+								type: 'text',
+								text: `PR author: ${pr.user?.login ?? 'unknown'}`,
+							},
+						],
+					},
+					{
+						type: 'paragraph',
+						content: [
+							{
+								type: 'text',
+								text: `Requested by: ${requestedBy}`,
+							},
+						],
+					},
+				],
+			},
+		},
+	};
+
+	const response = await fetch(`${jiraBaseUrl}/rest/api/3/issue`, {
+		method: 'POST',
+		headers: {
+			'Authorization': `Basic ${auth}`,
+			'Accept': 'application/json',
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify(payload),
+	});
+
+	if (!response.ok) {
+		const body = await response.text();
+		throw new Error(`Jira request failed (${response.status}): ${body}`);
+	}
+	const task = (await response.json()) as { key?: string };
+
+	await context.octokit.issues.update({
+		...context.issue(),
+		body: `${pr.body?.trim() || 'no description'} \n\n Task: [${task.key}]`,
+	});
+
+	const data = (await response.json()) as { key?: string };
+	const issueKey = data.key;
+
+	if (!issueKey) {
+		throw new Error('Jira response did not return issue key');
+	}
+
+	const issueUrl = `${jiraBaseUrl}/browse/${issueKey}`;
+
+	await context.octokit.reactions.createForIssueComment({
+		...context.issue(),
+		comment_id: commentId,
+		content: '+1',
+	});
+	return issueUrl;
+};
