@@ -27,7 +27,7 @@ const getEnv = (name: string): string => {
 	return value.trim();
 };
 
-export const handleJira = async ({ context, boardName, pr, requestedBy, commentId }: HandleJiraArg): Promise<string> => {
+export const handleJira = async ({ context, boardName, pr, requestedBy }: HandleJiraArg): Promise<string> => {
 	const jiraBaseUrl = getEnv('JIRA_BASE_URL').replace(/\/$/, '');
 	const jiraApiToken = getEnv('JIRA_API_TOKEN');
 	const hasCommunityLabel = pr.labels.some((label) => label.toLowerCase() === 'community');
