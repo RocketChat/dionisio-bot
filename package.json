@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "github-cherry-pick": "^1.1.0",
+    "md-to-adf": "^0.6.4",
     "probot": "^13.4.3",
     "semver": "^7.6.0"
   },

@@ -2463,6 +2463,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"adf-builder@npm:^3.3.0":
+  version: 3.3.0
+  resolution: "adf-builder@npm:3.3.0"
+  checksum: 10c0/9a0e763ef2fb1138c9177bb14259241d9e2c728481072844ae1d9776aa99ab1a45849a4047609ed971a5506d7e102cd5dcc9dd5e25e526175c665a1f99535bc0
+  languageName: node
+  linkType: hard
+
 "agent-base@npm:^7.1.0, agent-base@npm:^7.1.2":
   version: 7.1.3
   resolution: "agent-base@npm:7.1.3"
@@ -3286,6 +3293,7 @@ __metadata:
     eslint-plugin-prettier: "npm:^5.4.1"
     github-cherry-pick: "npm:^1.1.0"
     jest: "npm:^29.0.0"
+    md-to-adf: "npm:^0.6.4"
     nock: "npm:^13.0.5"
     prettier: "npm:^3.5.3"
     probot: "npm:^13.4.3"
@@ -5492,10 +5500,29 @@ __metadata:
   languageName: node
   linkType: hard
 
+"marked@npm:^0.8.2":
+  version: 0.8.2
+  resolution: "marked@npm:0.8.2"
+  bin:
+    marked: bin/marked
+  checksum: 10c0/afb59f634b161819815bd7df00db3d86b9e52973624a14c90b8584f9d72939233ced90893bc17a4e61211b5de94d22f9d59cb83ba480c6331f81e721b079a15b
+  languageName: node
+  linkType: hard
+
 "math-intrinsics@npm:^1.1.0":
   version: 1.1.0
   resolution: "math-intrinsics@npm:1.1.0"
   checksum: 10c0/7579ff94e899e2f76ab64491d76cf606274c874d8f2af4a442c016bd85688927fcfca157ba6bf74b08e9439dc010b248ce05b96cc7c126a354c3bae7fcb48b7f
+  languageName: node
+  linkType: hard
+
+"md-to-adf@npm:^0.6.4":
+  version: 0.6.4
+  resolution: "md-to-adf@npm:0.6.4"
+  dependencies:
+    adf-builder: "npm:^3.3.0"
+    marked: "npm:^0.8.2"
+  checksum: 10c0/ae3a2ee27c12dc9ce481414a70bab112eba09b3315e8a58f836048deae4adbaaa46f7d81bbc153fb96e7f45b6bab652bbadfba17e29b5626c0221743a1d6a214
   languageName: node
   linkType: hard
 

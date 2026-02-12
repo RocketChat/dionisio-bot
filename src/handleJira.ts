@@ -1,6 +1,34 @@
 import { Context } from 'probot';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mdToAdf = require('md-to-adf') as (markdown: string) => { toJSON: () => { type: string; version: number; content: unknown[] } };
 
 const JIRA_ISSUE_KEY_REGEX = /^[A-Z][A-Z0-9]+-\d+$/i;
+
+interface AdfBlock {
+	type: string;
+	content?: unknown[];
+	attrs?: unknown;
+}
+
+function prBodyToAdfContent(body: string | null): AdfBlock[] {
+	const raw = body?.trim() || 'no description';
+	try {
+		const adf = mdToAdf(raw);
+		const json = adf?.toJSON?.();
+		const content = json?.content;
+		if (Array.isArray(content) && content.length > 0) {
+			return content as AdfBlock[];
+		}
+	} catch {
+		// fallback to plain text
+	}
+	return [
+		{
+			type: 'paragraph',
+			content: [{ type: 'text', text: `PR description: ${raw}` }],
+		},
+	];
+}
 
 export const isJiraTaskKey = (arg: string): boolean => JIRA_ISSUE_KEY_REGEX.test(arg.trim());
 
@@ -58,48 +86,24 @@ export const handleJira = async ({ context, boardName, parentTaskKey, pr, reques
 				content: [
 					{
 						type: 'paragraph',
-						content: [
-							{
-								type: 'text',
-								text: 'Task automatically created by dionisio-bot.',
-							},
-						],
+						content: [{ type: 'text', text: 'Task automatically created by dionisio-bot.' }],
 					},
 					{
 						type: 'paragraph',
-						content: [
-							{
-								type: 'text',
-								text: `PR: ${pr.html_url}`,
-							},
-						],
+						content: [{ type: 'text', text: `PR: ${pr.html_url}` }],
 					},
 					{
 						type: 'paragraph',
-						content: [
-							{
-								type: 'text',
-								text: `PR description: ${pr.body?.trim() || 'no description'}`,
-							},
-						],
+						content: [{ type: 'text', text: 'PR description:' }],
+					},
+					...prBodyToAdfContent(pr.body),
+					{
+						type: 'paragraph',
+						content: [{ type: 'text', text: `PR author: ${pr.user?.login ?? 'unknown'}` }],
 					},
 					{
 						type: 'paragraph',
-						content: [
-							{
-								type: 'text',
-								text: `PR author: ${pr.user?.login ?? 'unknown'}`,
-							},
-						],
-					},
-					{
-						type: 'paragraph',
-						content: [
-							{
-								type: 'text',
-								text: `Requested by: ${requestedBy}`,
-							},
-						],
+						content: [{ type: 'text', text: `Requested by: ${requestedBy}` }],
 					},
 				],
 			},
