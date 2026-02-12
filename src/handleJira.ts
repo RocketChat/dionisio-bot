@@ -29,11 +29,9 @@ const getEnv = (name: string): string => {
 
 export const handleJira = async ({ context, boardName, pr, requestedBy, commentId }: HandleJiraArg): Promise<string> => {
 	const jiraBaseUrl = getEnv('JIRA_BASE_URL').replace(/\/$/, '');
-	const jiraEmail = getEnv('JIRA_EMAIL');
 	const jiraApiToken = getEnv('JIRA_API_TOKEN');
 	const hasCommunityLabel = pr.labels.some((label) => label.toLowerCase() === 'community');
 
-	const auth = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64');
 	const payload = {
 		fields: {
 			project: {
@@ -101,7 +99,7 @@ export const handleJira = async ({ context, boardName, pr, requestedBy, commentI
 	const response = await fetch(`${jiraBaseUrl}/rest/api/3/issue`, {
 		method: 'POST',
 		headers: {
-			'Authorization': `Basic ${auth}`,
+			'Authorization': `Basic ${jiraApiToken}`,
 			'Accept': 'application/json',
 			'Content-Type': 'application/json',
 		},
