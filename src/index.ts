@@ -254,7 +254,7 @@ export = (app: Probot) => {
 				});
 				console.log('handleJira->', e);
 			} finally {
-				await context.octokit.reactions.deleteForCommitComment({
+				await context.octokit.reactions.deleteForIssueComment({
 					...context.issue(),
 					comment_id: comment.id,
 					content: 'eyes',
