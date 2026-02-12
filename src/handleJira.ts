@@ -1,8 +1,13 @@
 import { Context } from 'probot';
 
+const JIRA_ISSUE_KEY_REGEX = /^[A-Z][A-Z0-9]+-\d+$/i;
+
+export const isJiraTaskKey = (arg: string): boolean => JIRA_ISSUE_KEY_REGEX.test(arg.trim());
+
 interface HandleJiraArg {
 	context: Context;
 	boardName: string;
+	parentTaskKey?: string;
 	pr: {
 		number: number;
 		title: string;
@@ -27,19 +32,22 @@ const getEnv = (name: string): string => {
 	return value.trim();
 };
 
-export const handleJira = async ({ context, boardName, pr, requestedBy }: HandleJiraArg): Promise<string> => {
+export const handleJira = async ({ context, boardName, parentTaskKey, pr, requestedBy }: HandleJiraArg): Promise<string> => {
 	const jiraBaseUrl = getEnv('JIRA_BASE_URL').replace(/\/$/, '');
 	const jiraApiToken = getEnv('JIRA_API_TOKEN');
 	const hasCommunityLabel = pr.labels.some((label) => label.toLowerCase() === 'community');
+	const isSubtask = Boolean(parentTaskKey);
+	const projectKey = parentTaskKey ? parentTaskKey.replace(/-\d+$/, '') : boardName;
 
 	const payload = {
 		fields: {
 			project: {
-				key: boardName,
+				key: projectKey,
 			},
+			...(isSubtask ? { parent: { key: parentTaskKey } } : {}),
 			summary: `[PR #${pr.number}] ${pr.title}`,
 			issuetype: {
-				name: 'Task',
+				name: isSubtask ? 'Sub-task' : 'Task',
 			},
 			...(hasCommunityLabel ? { labels: ['community'] } : {}),
 			description: {

@@ -5,7 +5,7 @@ import { handleBackport } from './handleBackport';
 import { run } from './Queue';
 import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
-import { handleJira } from './handleJira';
+import { handleJira, isJiraTaskKey } from './handleJira';
 
 export = (app: Probot) => {
 	app.log.useLevelLabels = false;
@@ -217,7 +217,8 @@ export = (app: Probot) => {
 		}
 
 		if (command === 'jira' && args?.trim()) {
-			const boardName = args.trim().replace(/^["']|["']$/g, '');
+			const rawArg = args.trim().replace(/^["']|["']$/g, '');
+			const asSubtask = isJiraTaskKey(rawArg);
 
 			await context.octokit.reactions.createForIssueComment({
 				...context.issue(),
@@ -228,7 +229,8 @@ export = (app: Probot) => {
 			try {
 				await handleJira({
 					context,
-					boardName,
+					boardName: rawArg,
+					...(asSubtask ? { parentTaskKey: rawArg } : {}),
 					pr: {
 						number: pr.data.number,
 						title: pr.data.title,
