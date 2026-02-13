@@ -100,6 +100,82 @@ export = (app: Probot) => {
 
 	app.on(['issue_comment.created'], async (context): Promise<void> => {
 		const { comment, issue } = context.payload;
+		const matcher = /^\/([\w]+)\b *(.*)?$/m;
+
+		const [, command, args] = comment.body.match(matcher) || [];
+
+		if (command === 'bark' || command === 'howl') {
+			// add a reaction to the comment
+			await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: '+1',
+			});
+
+			await context.octokit.issues.createComment({
+				...context.issue(),
+				body: Math.random() > 0.5 ? 'AU AU' : 'woof',
+			});
+			return;
+		}
+
+		if (command === 'jira') {
+			if (!args?.trim()) {
+				// reacts with thinking face
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: 'confused',
+				});
+				return;
+			}
+			const rawArg = args.trim().replace(/^["']|["']$/g, '');
+			const asSubtask = isJiraTaskKey(rawArg);
+
+			await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: 'eyes',
+			});
+
+			try {
+				await handleJira({
+					context,
+					boardName: rawArg,
+					...(asSubtask ? { parentTaskKey: rawArg } : {}),
+					pr: {
+						number: issue.number,
+						title: issue.title,
+						body: issue.body,
+						html_url: issue.html_url,
+						labels: issue.labels.map((label) => label.name),
+						milestone: issue.milestone?.title ?? undefined,
+						user: issue.user,
+					},
+					requestedBy: comment.user.login,
+					commentId: comment.id,
+				});
+
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '+1',
+				});
+			} catch (e) {
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '-1',
+				});
+				console.log('handleJira->', e);
+			} finally {
+				await context.octokit.reactions.deleteForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: 'eyes',
+				});
+			}
+		}
 
 		if (!issue.pull_request) {
 			return;
@@ -119,25 +195,6 @@ export = (app: Probot) => {
 		});
 
 		if (!orgs.data.some(({ login }) => login === 'RocketChat')) {
-			return;
-		}
-
-		const matcher = /^\/([\w]+)\b *(.*)?$/m;
-
-		const [, command, args] = comment.body.match(matcher) || [];
-
-		if (command === 'bark' || command === 'howl') {
-			// add a reaction to the comment
-			await context.octokit.reactions.createForIssueComment({
-				...context.issue(),
-				comment_id: comment.id,
-				content: '+1',
-			});
-
-			await context.octokit.issues.createComment({
-				...context.issue(),
-				body: Math.random() > 0.5 ? 'AU AU' : 'woof',
-			});
 			return;
 		}
 
@@ -214,64 +271,6 @@ export = (app: Probot) => {
 					}),
 				);
 			}
-		}
-
-		if (command === 'jira' && args?.trim()) {
-			const rawArg = args.trim().replace(/^["']|["']$/g, '');
-			const asSubtask = isJiraTaskKey(rawArg);
-
-			await context.octokit.reactions.createForIssueComment({
-				...context.issue(),
-				comment_id: comment.id,
-				content: 'eyes',
-			});
-
-			try {
-				await handleJira({
-					context,
-					boardName: rawArg,
-					...(asSubtask ? { parentTaskKey: rawArg } : {}),
-					pr: {
-						number: pr.data.number,
-						title: pr.data.title,
-						body: pr.data.body,
-						html_url: pr.data.html_url,
-						labels: pr.data.labels.map((label) => label.name),
-						milestone: pr.data.milestone?.title ?? undefined,
-						user: pr.data.user,
-					},
-					requestedBy: comment.user.login,
-					commentId: comment.id,
-				});
-
-				await context.octokit.reactions.createForIssueComment({
-					...context.issue(),
-					comment_id: comment.id,
-					content: '+1',
-				});
-			} catch (e) {
-				await context.octokit.reactions.createForIssueComment({
-					...context.issue(),
-					comment_id: comment.id,
-					content: '-1',
-				});
-				console.log('handleJira->', e);
-			} finally {
-				await context.octokit.reactions.deleteForIssueComment({
-					...context.issue(),
-					comment_id: comment.id,
-					content: 'eyes',
-				});
-			}
-		}
-
-		if (command === 'jira' && !args?.trim()) {
-			// reacts with thinking face
-			await context.octokit.reactions.createForIssueComment({
-				...context.issue(),
-				comment_id: comment.id,
-				content: 'confused',
-			});
 		}
 	});
 
