@@ -61,6 +61,11 @@ export const applyLabels = async (
 	>,
 ) => {
 	try {
+		if (context.payload.sender.login === GITHUB_LOGIN) {
+			console.log('ignoring event triggered by bot', { sender: context.payload.sender.login, prNumber: pullRequest.number });
+			return;
+		}
+
 		const hasConflicts = pullRequest.mergeable_state === 'dirty';
 
 		const hasInvalidTitle = pullRequest.labels.some((label) => label.name === 'Invalid PR Title');
