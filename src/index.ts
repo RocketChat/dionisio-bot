@@ -1,4 +1,4 @@
-import { Probot } from 'probot';
+import { Probot, Context } from 'probot';
 import { applyLabels } from './handleQALabels';
 import { handlePatch } from './handlePatch';
 import { handleBackport } from './handleBackport';
@@ -6,6 +6,7 @@ import { run } from './Queue';
 import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
+import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
 
 export = (app: Probot) => {
 	app.log.useLevelLabels = false;
@@ -274,25 +275,92 @@ export = (app: Probot) => {
 		}
 	});
 
-	app.on(['check_suite.requested'], async function check(context) {
+	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
 		const startTime = new Date();
 		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
+		const { owner, repo } = context.repo();
 
-		context.octokit.checks.create(
+		const prs = await context.octokit.pulls.list({
+			owner,
+			repo,
+			state: 'open',
+			head: `${owner}:${headBranch}`,
+			sort: 'updated',
+			direction: 'desc',
+			per_page: 1,
+		});
+
+		const pr = prs.data[0];
+		if (!pr) {
+			await context.octokit.checks.create(
+				context.repo({
+					name: CHECK_RUN_NAME,
+					head_sha: headSha,
+					status: 'completed',
+					started_at: startTime.toISOString(),
+					completed_at: new Date().toISOString(),
+					conclusion: 'neutral',
+					output: {
+						title: 'No open PR',
+						summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
+					},
+				}),
+			);
+			return;
+		}
+
+		const fullPr = await context.octokit.pulls.get({
+			owner,
+			repo,
+			pull_number: pr.number,
+		});
+
+		const prForQA: PullRequestForQA = {
+			mergeable: fullPr.data.mergeable ?? undefined,
+			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
+			mergeable_state: fullPr.data.mergeable_state ?? 'unknown',
+			milestone: fullPr.data.milestone?.title,
+			url: fullPr.data.html_url ?? fullPr.data.url,
+			number: fullPr.data.number,
+		};
+
+		const ref = fullPr.data.head.ref;
+		const result = await runQAChecks(prForQA, owner, repo, ref, context.octokit);
+
+		if (!result) {
+			await context.octokit.checks.create(
+				context.repo({
+					name: CHECK_RUN_NAME,
+					head_sha: headSha,
+					status: 'completed',
+					started_at: startTime.toISOString(),
+					completed_at: new Date().toISOString(),
+					conclusion: 'neutral',
+					output: {
+						title: 'Could not run checks',
+						summary: 'Dionisio QA could not run (e.g. missing package.json on base ref).',
+					},
+				}),
+			);
+			return;
+		}
+
+		const { title, summary } = formatCheckRunOutput(result);
+		await context.octokit.checks.create(
 			context.repo({
-				name: 'Auto label QA',
-				head_branch: headBranch,
+				name: CHECK_RUN_NAME,
 				head_sha: headSha,
 				status: 'completed',
 				started_at: startTime.toISOString(),
-				conclusion: 'success',
 				completed_at: new Date().toISOString(),
-				output: {
-					title: 'Labels are properly applied',
-					summary: 'Labels are properly applied',
-				},
+				conclusion: result.readyToMerge ? 'success' : 'failure',
+				output: { title, summary },
 			}),
 		);
+	}
+
+	app.on(['check_suite.requested'], async function check(context) {
+		await runDionisioQACheck(context);
 	});
 
 	app.on(['check_suite.rerequested'], async function check(context) {
@@ -302,15 +370,79 @@ export = (app: Probot) => {
 			}),
 		);
 
+		const dionisioRun = checkRuns.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+		if (!dionisioRun) {
+			await runDionisioQACheck(context);
+			return;
+		}
+
+		const { owner, repo } = context.repo();
+		const prs = await context.octokit.pulls.list({
+			owner,
+			repo,
+			state: 'open',
+			head: `${owner}:${context.payload.check_suite.head_branch}`,
+			sort: 'updated',
+			direction: 'desc',
+			per_page: 1,
+		});
+
+		const pr = prs.data[0];
+		if (!pr) {
+			await context.octokit.checks.update(
+				context.repo({
+					name: CHECK_RUN_NAME,
+					check_run_id: dionisioRun.id,
+					conclusion: 'neutral',
+					output: {
+						title: 'No open PR',
+						summary: 'There is no open pull request for this branch.',
+					},
+				}),
+			);
+			return;
+		}
+
+		const fullPr = await context.octokit.pulls.get({
+			owner,
+			repo,
+			pull_number: pr.number,
+		});
+
+		const prForQA: PullRequestForQA = {
+			mergeable: fullPr.data.mergeable ?? undefined,
+			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
+			mergeable_state: fullPr.data.mergeable_state ?? 'unknown',
+			milestone: fullPr.data.milestone?.title,
+			url: fullPr.data.html_url ?? fullPr.data.url,
+			number: fullPr.data.number,
+		};
+
+		const result = await runQAChecks(prForQA, owner, repo, fullPr.data.head.ref, context.octokit);
+
+		if (!result) {
+			await context.octokit.checks.update(
+				context.repo({
+					name: CHECK_RUN_NAME,
+					check_run_id: dionisioRun.id,
+					conclusion: 'neutral',
+					output: {
+						title: 'Could not run checks',
+						summary: 'Dionisio QA could not run.',
+					},
+				}),
+			);
+			return;
+		}
+
+		const { title, summary } = formatCheckRunOutput(result);
 		await context.octokit.checks.update(
 			context.repo({
-				name: 'Auto label QA',
-				conclusion: 'success',
-				output: {
-					title: 'Labels are properly applied',
-					summary: 'Labels are properly applied',
-				},
-				check_run_id: checkRuns.data.check_runs[0].id,
+				name: CHECK_RUN_NAME,
+				check_run_id: dionisioRun.id,
+				conclusion: result.readyToMerge ? 'success' : 'failure',
+				output: { title, summary },
+				completed_at: new Date().toISOString(),
 			}),
 		);
 	});
