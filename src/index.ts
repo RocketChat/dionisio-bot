@@ -264,6 +264,23 @@ export = (app: Probot) => {
 		}
 	});
 
+	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<boolean> {
+		try {
+			await octokit.graphql(
+				`mutation EnqueuePullRequest($input: EnqueuePullRequestInput!) {
+					enqueuePullRequest(input: $input) {
+						mergeQueueEntry { id }
+					}
+				}`,
+				{ input: { pullRequestId: pullRequestNodeId } },
+			);
+			return true;
+		} catch (error) {
+			console.log('enqueuePullRequest failed:', error);
+			return false;
+		}
+	}
+
 	async function runDionisioQACheckForRef(
 		octokit: Context['octokit'],
 		owner: string,
@@ -365,6 +382,10 @@ export = (app: Probot) => {
 				output: { title, summary },
 			});
 		}
+
+		if (result.readyToMerge && fullPr.data.node_id) {
+			await enqueuePrInMergeQueue(octokit, fullPr.data.node_id);
+		}
 	}
 
 	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
@@ -459,6 +480,10 @@ export = (app: Probot) => {
 				completed_at: new Date().toISOString(),
 			}),
 		);
+
+		if (result.readyToMerge && fullPr.data.node_id) {
+			await enqueuePrInMergeQueue(context.octokit, fullPr.data.node_id);
+		}
 	});
 
 	// app.on(["projects_v2_item.created"], (context) => {
