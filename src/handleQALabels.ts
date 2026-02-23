@@ -19,6 +19,7 @@ export const applyLabels = async (
 	context: Context<
 		| 'pull_request.opened'
 		| 'pull_request.synchronize'
+		| 'pull_request.edited'
 		| 'pull_request.labeled'
 		| 'pull_request.unlabeled'
 		| 'issues.milestoned'

@@ -41,10 +41,29 @@ export = (app: Probot) => {
 				context,
 			),
 		);
+
+		const { owner, repo } = context.repo();
+		const suites = await context.octokit.checks.listSuitesForRef({
+			owner,
+			repo,
+			ref: pr.data.base.ref,
+		});
+		const suite = suites.data.check_suites.find((s) => s.app?.name === 'dionisio-bot');
+		if (suite) {
+			try {
+				await context.octokit.checks.rerequestSuite({
+					owner,
+					repo,
+					check_suite_id: suite.id,
+				});
+			} catch (error) {
+				console.log(error);
+			}
+		}
 	});
 
 	app.on(
-		['pull_request.opened', 'pull_request.synchronize', 'pull_request.labeled', 'pull_request.unlabeled'],
+		['pull_request.opened', 'pull_request.synchronize', 'pull_request.edited', 'pull_request.labeled', 'pull_request.unlabeled'],
 		async (context): Promise<void> => {
 			if (context.payload.pull_request.closed_at) {
 				return;
