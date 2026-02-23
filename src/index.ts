@@ -276,10 +276,7 @@ export = (app: Probot) => {
 
 	app.on(['check_suite.requested'], async function check(context) {
 		const startTime = new Date();
-		// Do stuff
 		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
-
-		console.log('AAAAAAAA->', headBranch, headSha);
 
 		context.octokit.checks.create(
 			context.repo({
