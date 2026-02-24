@@ -313,6 +313,31 @@ export = (app: Probot) => {
 		}
 	}
 
+	async function tryMergePr(octokit: Context['octokit'], nodeId: string, owner: string, repo: string, pullNumber: number): Promise<string> {
+		console.log(`tryMergePr: attempting merge for PR #${pullNumber} (${owner}/${repo})`);
+
+		const enqueued = await enqueuePrInMergeQueue(octokit, nodeId);
+		if (enqueued) {
+			console.log(`tryMergePr: PR #${pullNumber} enqueued in merge queue`);
+			return '🚀 Enqueued in merge queue';
+		}
+
+		const autoMergeEnabled = await enableMergeWhenReady(octokit, nodeId);
+		if (autoMergeEnabled) {
+			console.log(`tryMergePr: PR #${pullNumber} auto-merge enabled`);
+			return '🔄 Auto-merge enabled (merge when ready)';
+		}
+
+		const merged = await mergePrWithSquash(octokit, owner, repo, pullNumber);
+		if (merged) {
+			console.log(`tryMergePr: PR #${pullNumber} squash-merged directly`);
+			return '✅ Squash-merged directly';
+		}
+
+		console.log(`tryMergePr: all merge strategies failed for PR #${pullNumber}`);
+		return '⚠️ All merge strategies failed — please merge manually';
+	}
+
 	async function runDionisioQACheckForRef(
 		octokit: Context['octokit'],
 		owner: string,
@@ -435,7 +460,15 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const { title, summary } = formatCheckRunOutput(result);
+		const output = formatCheckRunOutput(result);
+		const title = output.title;
+		let summary = output.summary;
+
+		if (result.readyToMerge && fullPr.data.node_id) {
+			const mergeResult = await tryMergePr(octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
+			summary += `\n\n### Merge\n- ${mergeResult}`;
+		}
+
 		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
 		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
 
@@ -458,16 +491,6 @@ export = (app: Probot) => {
 				conclusion: result.readyToMerge ? 'success' : 'failure',
 				output: { title, summary },
 			});
-		}
-
-		if (result.readyToMerge && fullPr.data.node_id) {
-			const autoMergeEnabled = await enableMergeWhenReady(octokit, fullPr.data.node_id);
-			if (!autoMergeEnabled) {
-				const merged = await mergePrWithSquash(octokit, baseOwner, baseRepo, fullPr.data.number);
-				if (!merged) {
-					await enqueuePrInMergeQueue(octokit, fullPr.data.node_id);
-				}
-			}
 		}
 	}
 
