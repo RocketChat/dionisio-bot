@@ -279,6 +279,23 @@ export = (app: Probot) => {
 		}
 	}
 
+	async function enableMergeWhenReady(octokit: Context['octokit'], pullRequestNodeId: string): Promise<boolean> {
+		try {
+			await octokit.graphql(
+				`mutation EnablePullRequestAutoMerge($input: EnablePullRequestAutoMergeInput!) {
+					enablePullRequestAutoMerge(input: $input) {
+						pullRequest { autoMergeRequest { enabledAt } }
+					}
+				}`,
+				{ input: { pullRequestId: pullRequestNodeId, mergeMethod: 'SQUASH' } },
+			);
+			return true;
+		} catch (error) {
+			console.log('enablePullRequestAutoMerge failed:', error);
+			return false;
+		}
+	}
+
 	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<boolean> {
 		try {
 			await octokit.graphql(
@@ -306,7 +323,11 @@ export = (app: Probot) => {
 		const startTime = new Date();
 		const repoParams = { owner, repo };
 
-		const prs = await octokit.pulls.list({
+		let prNumber: number | null = null;
+		let baseOwner = owner;
+		let baseRepo = repo;
+
+		const sameRepoPrs = await octokit.pulls.list({
 			...repoParams,
 			state: 'open',
 			head: `${owner}:${headBranch}`,
@@ -314,9 +335,29 @@ export = (app: Probot) => {
 			direction: 'desc',
 			per_page: 1,
 		});
+		const sameRepoPr = sameRepoPrs.data[0];
+		if (sameRepoPr) {
+			prNumber = sameRepoPr.number;
+		}
 
-		const pr = prs.data[0];
-		if (!pr) {
+		if (prNumber === null) {
+			try {
+				const commitPrs = await octokit.repos.listPullRequestsAssociatedWithCommit({
+					...repoParams,
+					commit_sha: headSha,
+				});
+				const openPr = commitPrs.data.find((p) => p.state === 'open');
+				if (openPr?.number && openPr.base?.repo) {
+					prNumber = openPr.number;
+					baseOwner = openPr.base.repo.owner?.login ?? owner;
+					baseRepo = openPr.base.repo.name ?? repo;
+				}
+			} catch {
+				// not a fork or API not available
+			}
+		}
+
+		if (prNumber === null) {
 			await octokit.checks.create({
 				...repoParams,
 				name: CHECK_RUN_NAME,
@@ -333,7 +374,11 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const fullPr = await octokit.pulls.get({ ...repoParams, pull_number: pr.number });
+		const fullPr = await octokit.pulls.get({
+			owner: baseOwner,
+			repo: baseRepo,
+			pull_number: prNumber,
+		});
 		const prForQA: PullRequestForQA = {
 			mergeable: fullPr.data.mergeable ?? undefined,
 			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
@@ -343,7 +388,7 @@ export = (app: Probot) => {
 			number: fullPr.data.number,
 		};
 
-		const result = await runQAChecks(prForQA, owner, repo, fullPr.data.head.ref, octokit);
+		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit);
 
 		if (!result) {
 			const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
@@ -398,10 +443,13 @@ export = (app: Probot) => {
 			});
 		}
 
-		if (result.readyToMerge) {
-			const merged = await mergePrWithSquash(octokit, owner, repo, fullPr.data.number);
-			if (!merged && fullPr.data.node_id) {
-				await enqueuePrInMergeQueue(octokit, fullPr.data.node_id);
+		if (result.readyToMerge && fullPr.data.node_id) {
+			const autoMergeEnabled = await enableMergeWhenReady(octokit, fullPr.data.node_id);
+			if (!autoMergeEnabled) {
+				const merged = await mergePrWithSquash(octokit, baseOwner, baseRepo, fullPr.data.number);
+				if (!merged) {
+					await enqueuePrInMergeQueue(octokit, fullPr.data.node_id);
+				}
 			}
 		}
 	}
@@ -499,10 +547,13 @@ export = (app: Probot) => {
 			}),
 		);
 
-		if (result.readyToMerge) {
-			const merged = await mergePrWithSquash(context.octokit, owner, repo, fullPr.data.number);
-			if (!merged && fullPr.data.node_id) {
-				await enqueuePrInMergeQueue(context.octokit, fullPr.data.node_id);
+		if (result.readyToMerge && fullPr.data.node_id) {
+			const autoMergeEnabled = await enableMergeWhenReady(context.octokit, fullPr.data.node_id);
+			if (!autoMergeEnabled) {
+				const merged = await mergePrWithSquash(context.octokit, owner, repo, fullPr.data.number);
+				if (!merged) {
+					await enqueuePrInMergeQueue(context.octokit, fullPr.data.node_id);
+				}
 			}
 		}
 	});
