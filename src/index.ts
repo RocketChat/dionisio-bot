@@ -264,22 +264,26 @@ export = (app: Probot) => {
 		}
 	});
 
-	async function mergePrWithSquash(octokit: Context['octokit'], owner: string, repo: string, pullNumber: number): Promise<boolean> {
+	function extractErrorMessage(error: unknown): string {
+		const e = error as { status?: number; message?: string; errors?: { message?: string }[] };
+		const parts: string[] = [];
+		if (e.status) parts.push(`status=${e.status}`);
+		if (e.message) parts.push(e.message);
+		if (e.errors?.length) parts.push(e.errors.map((x) => x.message ?? JSON.stringify(x)).join('; '));
+		return parts.join(' — ') || 'Unknown error';
+	}
+
+	async function mergePrWithSquash(octokit: Context['octokit'], owner: string, repo: string, pullNumber: number): Promise<string | null> {
 		try {
-			await octokit.pulls.merge({
-				owner,
-				repo,
-				pull_number: pullNumber,
-				merge_method: 'squash',
-			});
-			return true;
-		} catch (error) {
+			await octokit.pulls.merge({ owner, repo, pull_number: pullNumber, merge_method: 'squash' });
+			return null;
+		} catch (error: unknown) {
 			console.log('mergePrWithSquash failed:', error);
-			return false;
+			return extractErrorMessage(error);
 		}
 	}
 
-	async function enableMergeWhenReady(octokit: Context['octokit'], pullRequestNodeId: string): Promise<boolean> {
+	async function enableMergeWhenReady(octokit: Context['octokit'], pullRequestNodeId: string): Promise<string | null> {
 		try {
 			await octokit.graphql(
 				`mutation EnablePullRequestAutoMerge($input: EnablePullRequestAutoMergeInput!) {
@@ -289,14 +293,14 @@ export = (app: Probot) => {
 				}`,
 				{ input: { pullRequestId: pullRequestNodeId, mergeMethod: 'SQUASH' } },
 			);
-			return true;
-		} catch (error) {
+			return null;
+		} catch (error: unknown) {
 			console.log('enablePullRequestAutoMerge failed:', error);
-			return false;
+			return extractErrorMessage(error);
 		}
 	}
 
-	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<boolean> {
+	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<string | null> {
 		try {
 			await octokit.graphql(
 				`mutation EnqueuePullRequest($input: EnqueuePullRequestInput!) {
@@ -306,36 +310,35 @@ export = (app: Probot) => {
 				}`,
 				{ input: { pullRequestId: pullRequestNodeId } },
 			);
-			return true;
-		} catch (error) {
+			return null;
+		} catch (error: unknown) {
 			console.log('enqueuePullRequest failed:', error);
-			return false;
+			return extractErrorMessage(error);
 		}
 	}
 
 	async function tryMergePr(octokit: Context['octokit'], nodeId: string, owner: string, repo: string, pullNumber: number): Promise<string> {
-		console.log(`tryMergePr: attempting merge for PR #${pullNumber} (${owner}/${repo})`);
+		const lines: string[] = [];
 
-		const enqueued = await enqueuePrInMergeQueue(octokit, nodeId);
-		if (enqueued) {
-			console.log(`tryMergePr: PR #${pullNumber} enqueued in merge queue`);
+		const enqueueErr = await enqueuePrInMergeQueue(octokit, nodeId);
+		if (enqueueErr === null) {
 			return '🚀 Enqueued in merge queue';
 		}
+		lines.push(`❌ Enqueue: ${enqueueErr}`);
 
-		const autoMergeEnabled = await enableMergeWhenReady(octokit, nodeId);
-		if (autoMergeEnabled) {
-			console.log(`tryMergePr: PR #${pullNumber} auto-merge enabled`);
+		const autoMergeErr = await enableMergeWhenReady(octokit, nodeId);
+		if (autoMergeErr === null) {
 			return '🔄 Auto-merge enabled (merge when ready)';
 		}
+		lines.push(`❌ Auto-merge: ${autoMergeErr}`);
 
-		const merged = await mergePrWithSquash(octokit, owner, repo, pullNumber);
-		if (merged) {
-			console.log(`tryMergePr: PR #${pullNumber} squash-merged directly`);
+		const squashErr = await mergePrWithSquash(octokit, owner, repo, pullNumber);
+		if (squashErr === null) {
 			return '✅ Squash-merged directly';
 		}
+		lines.push(`❌ Squash merge: ${squashErr}`);
 
-		console.log(`tryMergePr: all merge strategies failed for PR #${pullNumber}`);
-		return '⚠️ All merge strategies failed — please merge manually';
+		return `⚠️ All merge strategies failed\n${lines.join('\n')}`;
 	}
 
 	async function runDionisioQACheckForRef(
@@ -466,7 +469,7 @@ export = (app: Probot) => {
 
 		if (result.readyToMerge && fullPr.data.node_id) {
 			const mergeResult = await tryMergePr(octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
-			summary += `\n\n### Merge\n- ${mergeResult}`;
+			summary += `\n\n### Merge\n${mergeResult}`;
 		}
 
 		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
