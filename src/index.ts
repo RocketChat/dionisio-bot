@@ -264,6 +264,21 @@ export = (app: Probot) => {
 		}
 	});
 
+	async function mergePrWithSquash(octokit: Context['octokit'], owner: string, repo: string, pullNumber: number): Promise<boolean> {
+		try {
+			await octokit.pulls.merge({
+				owner,
+				repo,
+				pull_number: pullNumber,
+				merge_method: 'squash',
+			});
+			return true;
+		} catch (error) {
+			console.log('mergePrWithSquash failed:', error);
+			return false;
+		}
+	}
+
 	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<boolean> {
 		try {
 			await octokit.graphql(
@@ -383,8 +398,11 @@ export = (app: Probot) => {
 			});
 		}
 
-		if (result.readyToMerge && fullPr.data.node_id) {
-			await enqueuePrInMergeQueue(octokit, fullPr.data.node_id);
+		if (result.readyToMerge) {
+			const merged = await mergePrWithSquash(octokit, owner, repo, fullPr.data.number);
+			if (!merged && fullPr.data.node_id) {
+				await enqueuePrInMergeQueue(octokit, fullPr.data.node_id);
+			}
 		}
 	}
 
@@ -481,8 +499,11 @@ export = (app: Probot) => {
 			}),
 		);
 
-		if (result.readyToMerge && fullPr.data.node_id) {
-			await enqueuePrInMergeQueue(context.octokit, fullPr.data.node_id);
+		if (result.readyToMerge) {
+			const merged = await mergePrWithSquash(context.octokit, owner, repo, fullPr.data.number);
+			if (!merged && fullPr.data.node_id) {
+				await enqueuePrInMergeQueue(context.octokit, fullPr.data.node_id);
+			}
 		}
 	});
 
