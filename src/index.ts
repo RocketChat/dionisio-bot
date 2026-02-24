@@ -353,7 +353,24 @@ export = (app: Probot) => {
 					baseRepo = openPr.base.repo.name ?? repo;
 				}
 			} catch {
-				// not a fork or API not available
+				// commit may be in a fork (not in this repo)
+			}
+		}
+
+		// Fallback when event is from base repo but PR is from fork (commit not in base repo)
+		if (prNumber === null) {
+			const openPrs = await octokit.pulls.list({
+				...repoParams,
+				state: 'open',
+				sort: 'updated',
+				direction: 'desc',
+				per_page: 30,
+			});
+			const prByHeadSha = openPrs.data.find((p) => p.head.sha === headSha);
+			if (prByHeadSha) {
+				prNumber = prByHeadSha.number;
+				baseOwner = owner;
+				baseRepo = repo;
 			}
 		}
 
@@ -465,97 +482,7 @@ export = (app: Probot) => {
 	});
 
 	app.on(['check_suite.rerequested'], async function check(context) {
-		const checkRuns = await context.octokit.checks.listForSuite(
-			context.repo({
-				check_suite_id: context.payload.check_suite.id,
-			}),
-		);
-
-		const dionisioRun = checkRuns.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
-		if (!dionisioRun) {
-			await runDionisioQACheck(context);
-			return;
-		}
-
-		const { owner, repo } = context.repo();
-		const prs = await context.octokit.pulls.list({
-			owner,
-			repo,
-			state: 'open',
-			head: `${owner}:${context.payload.check_suite.head_branch}`,
-			sort: 'updated',
-			direction: 'desc',
-			per_page: 1,
-		});
-
-		const pr = prs.data[0];
-		if (!pr) {
-			await context.octokit.checks.update(
-				context.repo({
-					name: CHECK_RUN_NAME,
-					check_run_id: dionisioRun.id,
-					conclusion: 'neutral',
-					output: {
-						title: 'No open PR',
-						summary: 'There is no open pull request for this branch.',
-					},
-				}),
-			);
-			return;
-		}
-
-		const fullPr = await context.octokit.pulls.get({
-			owner,
-			repo,
-			pull_number: pr.number,
-		});
-
-		const prForQA: PullRequestForQA = {
-			mergeable: fullPr.data.mergeable ?? undefined,
-			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
-			mergeable_state: fullPr.data.mergeable_state ?? 'unknown',
-			milestone: fullPr.data.milestone?.title,
-			url: fullPr.data.html_url ?? fullPr.data.url,
-			number: fullPr.data.number,
-		};
-
-		const result = await runQAChecks(prForQA, owner, repo, fullPr.data.head.ref, context.octokit);
-
-		if (!result) {
-			await context.octokit.checks.update(
-				context.repo({
-					name: CHECK_RUN_NAME,
-					check_run_id: dionisioRun.id,
-					conclusion: 'neutral',
-					output: {
-						title: 'Could not run checks',
-						summary: 'Dionisio QA could not run.',
-					},
-				}),
-			);
-			return;
-		}
-
-		const { title, summary } = formatCheckRunOutput(result);
-		await context.octokit.checks.update(
-			context.repo({
-				name: CHECK_RUN_NAME,
-				check_run_id: dionisioRun.id,
-				conclusion: result.readyToMerge ? 'success' : 'failure',
-				output: { title, summary },
-				completed_at: new Date().toISOString(),
-			}),
-		);
-
-		if (result.readyToMerge && fullPr.data.node_id) {
-			const autoMergeEnabled = await enableMergeWhenReady(context.octokit, fullPr.data.node_id);
-			if (!autoMergeEnabled) {
-				const merged = await mergePrWithSquash(context.octokit, owner, repo, fullPr.data.number);
-				if (!merged) {
-					await enqueuePrInMergeQueue(context.octokit, fullPr.data.node_id);
-				}
-			}
-		}
+		await runDionisioQACheck(context);
 	});
 
 	// app.on(["projects_v2_item.created"], (context) => {
