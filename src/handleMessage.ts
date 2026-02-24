@@ -1,4 +1,4 @@
-const troubleMessage = `If you have any trouble, please check the [PR guidelines](https://handbook.rocket.chat/departments-and-operations/research-and-development/engineering/development/pr-general-instructions-and-handling)`;
+const troubleMessage = `If you have any trouble, please check the [PR guidelines](https://handbook.rocket.chat/space/RnD/359891385/%F0%9F%8C%90+PR+General+Instructions+and+Handling)`;
 
 const normalizeVersion = (version: string) => {
 	const [major, minor = 0, patch = 0] = version.split('.');
