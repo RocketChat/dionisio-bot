@@ -463,37 +463,51 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const output = formatCheckRunOutput(result);
-		const title = output.title;
-		let summary = output.summary;
-
-		if (result.readyToMerge && fullPr.data.node_id) {
-			const mergeResult = await tryMergePr(octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
-			summary += `\n\n### Merge\n${mergeResult}`;
-		}
+		const { title, summary } = formatCheckRunOutput(result);
+		const conclusion = result.readyToMerge ? 'success' : 'failure';
 
 		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
 		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
 
-		if (existing) {
-			await octokit.checks.update({
-				...repoParams,
-				check_run_id: existing.id,
-				conclusion: result.readyToMerge ? 'success' : 'failure',
-				output: { title, summary },
-				completed_at: new Date().toISOString(),
-			});
-		} else {
-			await octokit.checks.create({
-				...repoParams,
-				name: CHECK_RUN_NAME,
-				head_sha: headSha,
-				status: 'completed',
-				started_at: startTime.toISOString(),
-				completed_at: new Date().toISOString(),
-				conclusion: result.readyToMerge ? 'success' : 'failure',
-				output: { title, summary },
-			});
+		const checkRunId = existing
+			? (
+					await octokit.checks.update({
+						...repoParams,
+						check_run_id: existing.id,
+						conclusion,
+						output: { title, summary },
+						completed_at: new Date().toISOString(),
+					})
+				).data.id
+			: (
+					await octokit.checks.create({
+						...repoParams,
+						name: CHECK_RUN_NAME,
+						head_sha: headSha,
+						status: 'completed',
+						started_at: startTime.toISOString(),
+						completed_at: new Date().toISOString(),
+						conclusion,
+						output: { title, summary },
+					})
+				).data.id;
+
+		if (result.readyToMerge && fullPr.data.node_id) {
+			try {
+				const mergeResult = await tryMergePr(octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
+				await octokit.checks.update({
+					...repoParams,
+					check_run_id: checkRunId,
+					output: { title, summary: `${summary}\n\n### Merge\n${mergeResult}` },
+				});
+			} catch (error) {
+				console.log('tryMergePr unexpected error:', error);
+				await octokit.checks.update({
+					...repoParams,
+					check_run_id: checkRunId,
+					output: { title, summary: `${summary}\n\n### Merge\n⚠️ Unexpected error during merge attempt` },
+				});
+			}
 		}
 	}
 
