@@ -450,7 +450,7 @@ export = (app: Probot) => {
 			octokit.pulls.listReviews({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
 		]);
 
-		const hasReviews = reviews.data.length > 0;
+		const hasReviews = reviews.data.some((r) => r.user?.type !== 'Bot');
 
 		const prForQA: PullRequestForQA = {
 			mergeable: fullPr.data.mergeable ?? undefined,
