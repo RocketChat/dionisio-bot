@@ -341,6 +341,41 @@ export = (app: Probot) => {
 		return `⚠️ All merge strategies failed\n${lines.join('\n')}`;
 	}
 
+	async function upsertCheckRun(
+		octokit: Context['octokit'],
+		repoParams: { owner: string; repo: string },
+		headSha: string,
+		startTime: Date,
+		conclusion: 'success' | 'failure' | 'neutral',
+		output: { title: string; summary: string },
+	): Promise<number> {
+		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
+		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+
+		if (existing) {
+			const updated = await octokit.checks.update({
+				...repoParams,
+				check_run_id: existing.id,
+				conclusion,
+				output,
+				completed_at: new Date().toISOString(),
+			});
+			return updated.data.id;
+		}
+
+		const created = await octokit.checks.create({
+			...repoParams,
+			name: CHECK_RUN_NAME,
+			head_sha: headSha,
+			status: 'completed',
+			started_at: startTime.toISOString(),
+			completed_at: new Date().toISOString(),
+			conclusion,
+			output,
+		});
+		return created.data.id;
+	}
+
 	async function runDionisioQACheckForRef(
 		octokit: Context['octokit'],
 		owner: string,
@@ -403,27 +438,20 @@ export = (app: Probot) => {
 		}
 
 		if (prNumber === null) {
-			await octokit.checks.create({
-				...repoParams,
-				name: CHECK_RUN_NAME,
-				head_sha: headSha,
-				status: 'completed',
-				started_at: startTime.toISOString(),
-				completed_at: new Date().toISOString(),
-				conclusion: 'neutral',
-				output: {
-					title: 'No open PR',
-					summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
-				},
+			await upsertCheckRun(octokit, repoParams, headSha, startTime, 'neutral', {
+				title: 'No open PR',
+				summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
 			});
 			return;
 		}
 
-		const fullPr = await octokit.pulls.get({
-			owner: baseOwner,
-			repo: baseRepo,
-			pull_number: prNumber,
-		});
+		const [fullPr, reviews] = await Promise.all([
+			octokit.pulls.get({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
+			octokit.pulls.listReviews({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
+		]);
+
+		const hasReviews = reviews.data.length > 0;
+
 		const prForQA: PullRequestForQA = {
 			mergeable: fullPr.data.mergeable ?? undefined,
 			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
@@ -436,79 +464,28 @@ export = (app: Probot) => {
 		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit);
 
 		if (!result) {
-			const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
-			const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
-			if (existing) {
-				await octokit.checks.update({
-					...repoParams,
-					check_run_id: existing.id,
-					conclusion: 'neutral',
-					output: { title: 'Could not run checks', summary: 'Dionisio QA could not run.' },
-				});
-			} else {
-				await octokit.checks.create({
-					...repoParams,
-					name: CHECK_RUN_NAME,
-					head_sha: headSha,
-					status: 'completed',
-					started_at: startTime.toISOString(),
-					completed_at: new Date().toISOString(),
-					conclusion: 'neutral',
-					output: {
-						title: 'Could not run checks',
-						summary: 'Dionisio QA could not run (e.g. missing package.json on base ref).',
-					},
-				});
-			}
+			await upsertCheckRun(octokit, repoParams, headSha, startTime, 'neutral', {
+				title: 'Could not run checks',
+				summary: 'Dionisio QA could not run (e.g. missing package.json on base ref).',
+			});
 			return;
 		}
 
 		const { title, summary } = formatCheckRunOutput(result);
-		const conclusion = result.readyToMerge ? 'success' : 'failure';
+		let conclusion: 'success' | 'failure' | 'neutral';
+		let finalTitle = title;
 
-		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
-		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
-
-		const checkRunId = existing
-			? (
-					await octokit.checks.update({
-						...repoParams,
-						check_run_id: existing.id,
-						conclusion,
-						output: { title, summary },
-						completed_at: new Date().toISOString(),
-					})
-				).data.id
-			: (
-					await octokit.checks.create({
-						...repoParams,
-						name: CHECK_RUN_NAME,
-						head_sha: headSha,
-						status: 'completed',
-						started_at: startTime.toISOString(),
-						completed_at: new Date().toISOString(),
-						conclusion,
-						output: { title, summary },
-					})
-				).data.id;
-
-		if (result.readyToMerge && fullPr.data.node_id) {
-			try {
-				const mergeResult = await tryMergePr(octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
-				await octokit.checks.update({
-					...repoParams,
-					check_run_id: checkRunId,
-					output: { title, summary: `${summary}\n\n### Merge\n${mergeResult}` },
-				});
-			} catch (error) {
-				console.log('tryMergePr unexpected error:', error);
-				await octokit.checks.update({
-					...repoParams,
-					check_run_id: checkRunId,
-					output: { title, summary: `${summary}\n\n### Merge\n⚠️ Unexpected error during merge attempt` },
-				});
-			}
+		if (!hasReviews) {
+			conclusion = 'neutral';
+			finalTitle = 'Waiting for reviews';
+		} else {
+			conclusion = result.readyToMerge ? 'success' : 'failure';
 		}
+
+		await upsertCheckRun(octokit, repoParams, headSha, startTime, conclusion, {
+			title: finalTitle,
+			summary,
+		});
 	}
 
 	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
@@ -523,6 +500,84 @@ export = (app: Probot) => {
 
 	app.on(['check_suite.rerequested'], async function check(context) {
 		await runDionisioQACheck(context);
+	});
+
+	app.on(['check_suite.completed'], async (context) => {
+		if (context.payload.check_suite.conclusion !== 'success') {
+			return;
+		}
+
+		const { head_sha: headSha, head_branch: headBranch } = context.payload.check_suite;
+		const { owner, repo } = context.repo();
+
+		const runs = await context.octokit.checks.listForRef({ owner, repo, ref: headSha });
+		const dionisioRun = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+
+		if (!dionisioRun || dionisioRun.conclusion !== 'success') {
+			return;
+		}
+
+		let prNumber: number | null = null;
+		let baseOwner = owner;
+		let baseRepo = repo;
+
+		if (headBranch) {
+			const prs = await context.octokit.pulls.list({
+				owner,
+				repo,
+				state: 'open',
+				head: `${owner}:${headBranch}`,
+				per_page: 1,
+			});
+			if (prs.data[0]) {
+				prNumber = prs.data[0].number;
+			}
+		}
+
+		if (prNumber === null) {
+			const openPrs = await context.octokit.pulls.list({
+				owner,
+				repo,
+				state: 'open',
+				sort: 'updated',
+				direction: 'desc',
+				per_page: 30,
+			});
+			const match = openPrs.data.find((p) => p.head.sha === headSha);
+			if (match) {
+				prNumber = match.number;
+				baseOwner = owner;
+				baseRepo = repo;
+			}
+		}
+
+		if (prNumber === null) {
+			return;
+		}
+
+		const fullPr = await context.octokit.pulls.get({
+			owner: baseOwner,
+			repo: baseRepo,
+			pull_number: prNumber,
+		});
+
+		if (!fullPr.data.node_id) {
+			return;
+		}
+
+		try {
+			const mergeResult = await tryMergePr(context.octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
+			const existingTitle = dionisioRun.output?.title ?? 'Dionisio QA';
+			const existingSummary = dionisioRun.output?.summary ?? '';
+			await context.octokit.checks.update({
+				owner,
+				repo,
+				check_run_id: dionisioRun.id,
+				output: { title: existingTitle, summary: `${existingSummary}\n\n### Merge\n${mergeResult}` },
+			});
+		} catch (error) {
+			console.log('check_suite.completed merge error:', error);
+		}
 	});
 
 	// app.on(["projects_v2_item.created"], (context) => {
