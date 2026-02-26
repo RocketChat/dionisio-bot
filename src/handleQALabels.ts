@@ -12,6 +12,7 @@ export const applyLabels = async (
 		milestone?: string;
 		url: string;
 		number: number;
+		title: string;
 	},
 	owner: string,
 	repo: string,

@@ -459,6 +459,7 @@ export = (app: Probot) => {
 			milestone: fullPr.data.milestone?.title,
 			url: fullPr.data.html_url ?? fullPr.data.url,
 			number: fullPr.data.number,
+			title: fullPr.data.title,
 		};
 
 		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit);

@@ -46,6 +46,9 @@ const getProjects = async (octokit: Context['octokit'], url: string): Promise<bo
 	return Boolean(result.totalCount?.projectsV2.totalCount);
 };
 
+const VALID_PR_TITLE_REGEXP =
+	/(feat|fix|ci|chore|docs|test|refactor|i18n|regression|revert)(\([^)]+\))?!?: .{1,}$|(?:Bump .+)$|^Release [0-9]+\.[0-9]+\.[0-9]+$|^Merge master into develop/;
+
 export interface PullRequestForQA {
 	mergeable?: boolean | null;
 	labels: { name: string }[];
@@ -53,6 +56,7 @@ export interface PullRequestForQA {
 	milestone?: string;
 	url: string;
 	number: number;
+	title: string;
 }
 
 export const runQAChecks = async (
@@ -64,7 +68,7 @@ export const runQAChecks = async (
 ): Promise<QAChecksResult | null> => {
 	try {
 		const hasConflicts = pullRequest.mergeable_state === 'dirty';
-		const hasInvalidTitle = pullRequest.labels.some((label) => label.name === 'Invalid PR Title');
+		const hasInvalidTitle = !VALID_PR_TITLE_REGEXP.test(pullRequest.title);
 
 		const { data } = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
 			owner,
@@ -144,10 +148,11 @@ export const runQAChecks = async (
 
 		const readyToMerge = !hasConflicts && assured && Boolean(pullRequest.mergeable) && hasMilestone && !hasInvalidTitle && !wrongVersion;
 
-		const newLabels = [...new Set([...currentLabels, 'stat: ready to merge', 'stat: conflict'])].filter((label) => {
+		const newLabels = [...new Set([...currentLabels, 'stat: ready to merge', 'stat: conflict', 'Invalid PR Title'])].filter((label) => {
 			if (label === 'stat: conflict') return hasConflicts;
 			if (label === 'stat: QA skipped' || label === 'stat: QA tested') return false;
 			if (label === 'stat: ready to merge') return readyToMerge;
+			if (label === 'Invalid PR Title') return hasInvalidTitle;
 			return true;
 		});
 
