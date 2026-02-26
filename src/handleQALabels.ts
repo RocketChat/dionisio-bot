@@ -1,43 +1,8 @@
 import { Context } from 'probot';
+import { runQAChecks } from './qaChecks';
 import { handleMessage } from './handleMessage';
 
 const { GITHUB_LOGIN = 'dionisio-bot[bot]' } = process.env;
-
-// just gets the pr
-
-const getProjects = async (octokit: Context['octokit'], url: string): Promise<boolean> => {
-	const query = `query ($pull_request_url: URI!){
-    totalCount :resource(url:$pull_request_url) {
-      ... on PullRequest {
-        projectsV2{
-          totalCount
-        }
-      }
-    }
-  }`;
-
-	const result = (await octokit.graphql(query, {
-		pull_request_url: url,
-	})) as {
-		totalCount?: {
-			projectsV2: {
-				totalCount: number;
-			};
-		};
-	};
-
-	return Boolean(result.totalCount?.projectsV2.totalCount);
-};
-
-// query {
-//   repository(owner: "RocketChat", name: "Rocket.Chat") {
-//     projectsV2(query: "Patch 6.7.1", last: 1) {
-//       nodes {
-//         number
-//       }
-//     }
-//   }
-// }
 
 export const applyLabels = async (
 	pullRequest: {
@@ -47,6 +12,7 @@ export const applyLabels = async (
 		milestone?: string;
 		url: string;
 		number: number;
+		title: string;
 	},
 	owner: string,
 	repo: string,
@@ -54,6 +20,7 @@ export const applyLabels = async (
 	context: Context<
 		| 'pull_request.opened'
 		| 'pull_request.synchronize'
+		| 'pull_request.edited'
 		| 'pull_request.labeled'
 		| 'pull_request.unlabeled'
 		| 'issues.milestoned'
@@ -61,116 +28,42 @@ export const applyLabels = async (
 	>,
 ) => {
 	try {
-		if (context.payload.sender.login === GITHUB_LOGIN) {
-			console.log('ignoring event triggered by bot', { sender: context.payload.sender.login, prNumber: pullRequest.number });
+		if (context.payload.sender?.login === GITHUB_LOGIN) {
+			console.log('ignoring event triggered by bot', {
+				sender: context.payload.sender?.login,
+				prNumber: pullRequest.number,
+			});
 			return;
 		}
 
-		const hasConflicts = pullRequest.mergeable_state === 'dirty';
+		const result = await runQAChecks(pullRequest, owner, repo, ref, context.octokit);
 
-		const hasInvalidTitle = pullRequest.labels.some((label) => label.name === 'Invalid PR Title');
-
-		const { data } = await context.octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-			owner,
-			repo,
-			path: 'package.json',
-			ref,
-			headers: {
-				'Accept': 'application/vnd.github.raw+json',
-				'X-GitHub-Api-Version': '2022-11-28',
-			},
-		});
-
-		if (typeof data !== 'string') {
+		if (!result) {
 			return;
 		}
 
-		const { version: versionFromPackage } = JSON.parse(data);
-
-		const targetingVersion = [pullRequest.milestone]
-			.filter(Boolean)
-			.filter((milestone) => milestone && /(\d+\.\d+(\.\d+)?)/.test(milestone));
-
-		const hasMilestone = Boolean(pullRequest.milestone || (await getProjects(context.octokit, pullRequest.url)));
-
-		/**
-		 * Compare milestone/project with the current version
-		 * The idea is to check if the PR is targeting the correct version
-		 * Milestones has the version as x.y.z
-		 * version is in the package.json follows the x.y.z(-develop|-rc.x) pattern
-		 */
-
-		const [version] = versionFromPackage.split('-');
-		const isTargetingRightVersion = targetingVersion.some((m) => version.startsWith(m));
-
-		/**
-		 * Since 7.0 we don't use `stat: QA tested` and `stat: QA skipped` labels
-		 * they were causing confusion, where people were assuming that PR was not being tested
-		 *
-		 * we merged both labels into one `stat: QA: assured` label which is more clear for external contributors
-		 */
-
-		const originalLabels = pullRequest.labels.map((label) => label.name);
-
-		const currentLabels = originalLabels.map((label) => {
-			if (label === 'stat: QA tested' || label === 'stat: QA skipped') {
-				return 'stat: QA assured';
-			}
-			return label;
-		});
-
-		const assured = Boolean(currentLabels.includes('stat: QA assured'));
-
-		const newLabels: string[] = [...new Set([...currentLabels, 'stat: ready to merge', 'stat: conflict'])].filter((label) => {
-			if (label === 'stat: conflict') {
-				return hasConflicts;
-			}
-
-			if (label === 'stat: QA skipped' || label === 'stat: QA tested') {
-				return false; // it was replaced by stat: QA: assured it should not be here but just in case
-			}
-
-			if (label === 'stat: ready to merge') {
-				return !hasConflicts && assured && pullRequest.mergeable && hasMilestone && !hasInvalidTitle;
-			}
-			return true;
-		});
-
+		const { originalLabels, newLabels } = result;
 		const addedLabels = newLabels.filter((label) => !originalLabels.includes(label));
 		const removedLabels = originalLabels.filter((label) => !newLabels.includes(label));
 
-		// list all comments on the PR
-		// get the first from the bot
-		// if have a message, edit it
-		// if not, create a new one
+		const message = await handleMessage({
+			assured: result.assured,
+			hasConflicts: result.hasConflicts,
+			mergeable: result.mergeable,
+			hasMilestone: result.hasMilestone,
+			hasInvalidTitle: result.hasInvalidTitle,
+			wrongVersion: result.wrongVersion,
+		});
 
 		const comments = await context.octokit.issues.listComments({
 			...context.issue(),
 		});
 
 		const botComment = comments.data.find((comment) => comment.user?.login === GITHUB_LOGIN);
-
-		const message = await handleMessage({
-			assured,
-			hasConflicts,
-			mergeable: Boolean(pullRequest.mergeable !== false && !hasConflicts),
-			hasMilestone,
-			hasInvalidTitle,
-			wrongVersion:
-				hasMilestone && !isTargetingRightVersion && targetingVersion[0]
-					? {
-							currentVersion: version,
-							targetVersion: targetingVersion[0],
-						}
-					: undefined,
-		});
-
-		// compares if the message is the same as the one in the comment
-		// if it is, it does not update the comment
 		const ignoreUpdate = botComment && botComment.body === message;
 
 		console.log('changing labels ->', {
-			sender: context.payload.sender.login,
+			sender: context.payload.sender?.login,
 			prNumber: pullRequest.number,
 			ignoreUpdate,
 			originalLabels,
@@ -182,8 +75,6 @@ export const applyLabels = async (
 		if (ignoreUpdate) {
 			return;
 		}
-
-		// adds a meta tag containing the labels
 
 		if (botComment) {
 			await context.octokit.issues.updateComment({
