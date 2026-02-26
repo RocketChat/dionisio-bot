@@ -94,6 +94,14 @@ export = (app: Probot) => {
 
 		const [, command, args] = comment.body.match(matcher) || [];
 
+		const orgs = await context.octokit.orgs.listForUser({
+			username: comment.user.login,
+		});
+
+		if (!orgs.data.some(({ login }) => login === 'RocketChat')) {
+			return;
+		}
+
 		if (command === 'bark' || command === 'howl') {
 			// add a reaction to the comment
 			await context.octokit.reactions.createForIssueComment({
@@ -177,14 +185,6 @@ export = (app: Probot) => {
 		});
 
 		if (!pr.data) {
-			return;
-		}
-
-		const orgs = await context.octokit.orgs.listForUser({
-			username: comment.user.login,
-		});
-
-		if (!orgs.data.some(({ login }) => login === 'RocketChat')) {
 			return;
 		}
 
