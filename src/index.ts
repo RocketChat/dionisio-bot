@@ -1,4 +1,4 @@
-import { Probot } from 'probot';
+import { Probot, Context } from 'probot';
 import { applyLabels } from './handleQALabels';
 import { handlePatch } from './handlePatch';
 import { handleBackport } from './handleBackport';
@@ -6,6 +6,7 @@ import { run } from './Queue';
 import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
+import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
 
 export = (app: Probot) => {
 	app.log.useLevelLabels = false;
@@ -40,10 +41,17 @@ export = (app: Probot) => {
 				context,
 			),
 		);
+
+		try {
+			const { owner, repo } = context.repo();
+			await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref);
+		} catch (error) {
+			console.log(error);
+		}
 	});
 
 	app.on(
-		['pull_request.opened', 'pull_request.synchronize', 'pull_request.labeled', 'pull_request.unlabeled'],
+		['pull_request.opened', 'pull_request.synchronize', 'pull_request.edited', 'pull_request.labeled', 'pull_request.unlabeled'],
 		async (context): Promise<void> => {
 			if (context.payload.pull_request.closed_at) {
 				return;
@@ -70,28 +78,10 @@ export = (app: Probot) => {
 				),
 			);
 
-			const { owner, repo } = context.repo();
-
-			const suites = await context.octokit.checks.listSuitesForRef({
-				owner,
-				repo,
-				ref: context.payload.pull_request.base.ref,
-			});
-
-			const suite = suites.data.check_suites.find((suite) => {
-				return suite.app?.name === 'dionisio-bot';
-			});
-
-			if (!suite) {
-				return;
-			}
-
 			try {
-				await context.octokit.checks.rerequestSuite({
-					owner,
-					repo,
-					check_suite_id: suite.id,
-				});
+				const { owner, repo } = context.repo();
+				const { head } = context.payload.pull_request;
+				await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref);
 			} catch (error) {
 				console.log(error);
 			}
@@ -103,6 +93,14 @@ export = (app: Probot) => {
 		const matcher = /^\/([\w]+)\b *(.*)?$/m;
 
 		const [, command, args] = comment.body.match(matcher) || [];
+
+		const orgs = await context.octokit.orgs.listForUser({
+			username: comment.user.login,
+		});
+
+		if (!orgs.data.some(({ login }) => login === 'RocketChat')) {
+			return;
+		}
 
 		if (command === 'bark' || command === 'howl') {
 			// add a reaction to the comment
@@ -190,14 +188,6 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const orgs = await context.octokit.orgs.listForUser({
-			username: comment.user.login,
-		});
-
-		if (!orgs.data.some(({ login }) => login === 'RocketChat')) {
-			return;
-		}
-
 		/**
 		 * Gets the latest release of the repository
 		 * check if exists a branch with the latest version
@@ -274,48 +264,321 @@ export = (app: Probot) => {
 		}
 	});
 
-	app.on(['check_suite.requested'], async function check(context) {
-		const startTime = new Date();
-		// Do stuff
-		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
+	function extractErrorMessage(error: unknown): string {
+		const e = error as { status?: number; message?: string; errors?: { message?: string }[] };
+		const parts: string[] = [];
+		if (e.status) parts.push(`status=${e.status}`);
+		if (e.message) parts.push(e.message);
+		if (e.errors?.length) parts.push(e.errors.map((x) => x.message ?? JSON.stringify(x)).join('; '));
+		return parts.join(' — ') || 'Unknown error';
+	}
 
-		console.log('AAAAAAAA->', headBranch, headSha);
+	async function mergePrWithSquash(octokit: Context['octokit'], owner: string, repo: string, pullNumber: number): Promise<string | null> {
+		try {
+			await octokit.pulls.merge({ owner, repo, pull_number: pullNumber, merge_method: 'squash' });
+			return null;
+		} catch (error: unknown) {
+			console.log('mergePrWithSquash failed:', error);
+			return extractErrorMessage(error);
+		}
+	}
 
-		context.octokit.checks.create(
-			context.repo({
-				name: 'Auto label QA',
-				head_branch: headBranch,
-				head_sha: headSha,
-				status: 'completed',
-				started_at: startTime.toISOString(),
-				conclusion: 'success',
+	async function enableMergeWhenReady(octokit: Context['octokit'], pullRequestNodeId: string): Promise<string | null> {
+		try {
+			await octokit.graphql(
+				`mutation EnablePullRequestAutoMerge($input: EnablePullRequestAutoMergeInput!) {
+					enablePullRequestAutoMerge(input: $input) {
+						pullRequest { autoMergeRequest { enabledAt } }
+					}
+				}`,
+				{ input: { pullRequestId: pullRequestNodeId, mergeMethod: 'SQUASH' } },
+			);
+			return null;
+		} catch (error: unknown) {
+			console.log('enablePullRequestAutoMerge failed:', error);
+			return extractErrorMessage(error);
+		}
+	}
+
+	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<string | null> {
+		try {
+			await octokit.graphql(
+				`mutation EnqueuePullRequest($input: EnqueuePullRequestInput!) {
+					enqueuePullRequest(input: $input) {
+						mergeQueueEntry { id }
+					}
+				}`,
+				{ input: { pullRequestId: pullRequestNodeId } },
+			);
+			return null;
+		} catch (error: unknown) {
+			console.log('enqueuePullRequest failed:', error);
+			return extractErrorMessage(error);
+		}
+	}
+
+	async function tryMergePr(octokit: Context['octokit'], nodeId: string, owner: string, repo: string, pullNumber: number): Promise<string> {
+		const lines: string[] = [];
+
+		const enqueueErr = await enqueuePrInMergeQueue(octokit, nodeId);
+		if (enqueueErr === null) {
+			return '🚀 Enqueued in merge queue';
+		}
+		lines.push(`❌ Enqueue: ${enqueueErr}`);
+
+		const autoMergeErr = await enableMergeWhenReady(octokit, nodeId);
+		if (autoMergeErr === null) {
+			return '🔄 Auto-merge enabled (merge when ready)';
+		}
+		lines.push(`❌ Auto-merge: ${autoMergeErr}`);
+
+		const squashErr = await mergePrWithSquash(octokit, owner, repo, pullNumber);
+		if (squashErr === null) {
+			return '✅ Squash-merged directly';
+		}
+		lines.push(`❌ Squash merge: ${squashErr}`);
+
+		return `⚠️ All merge strategies failed\n${lines.join('\n')}`;
+	}
+
+	async function upsertCheckRun(
+		octokit: Context['octokit'],
+		repoParams: { owner: string; repo: string },
+		headSha: string,
+		startTime: Date,
+		conclusion: 'success' | 'failure' | 'neutral',
+		output: { title: string; summary: string },
+	): Promise<number> {
+		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
+		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+
+		if (existing) {
+			const updated = await octokit.checks.update({
+				...repoParams,
+				check_run_id: existing.id,
+				conclusion,
+				output,
 				completed_at: new Date().toISOString(),
-				output: {
-					title: 'Labels are properly applied',
-					summary: 'Labels are properly applied',
-				},
-			}),
-		);
+			});
+			return updated.data.id;
+		}
+
+		const created = await octokit.checks.create({
+			...repoParams,
+			name: CHECK_RUN_NAME,
+			head_sha: headSha,
+			status: 'completed',
+			started_at: startTime.toISOString(),
+			completed_at: new Date().toISOString(),
+			conclusion,
+			output,
+		});
+		return created.data.id;
+	}
+
+	async function runDionisioQACheckForRef(
+		octokit: Context['octokit'],
+		owner: string,
+		repo: string,
+		headSha: string,
+		headBranch: string,
+	): Promise<void> {
+		const startTime = new Date();
+		const repoParams = { owner, repo };
+
+		let prNumber: number | null = null;
+		let baseOwner = owner;
+		let baseRepo = repo;
+
+		const sameRepoPrs = await octokit.pulls.list({
+			...repoParams,
+			state: 'open',
+			head: `${owner}:${headBranch}`,
+			sort: 'updated',
+			direction: 'desc',
+			per_page: 1,
+		});
+		const sameRepoPr = sameRepoPrs.data[0];
+		if (sameRepoPr) {
+			prNumber = sameRepoPr.number;
+		}
+
+		if (prNumber === null) {
+			try {
+				const commitPrs = await octokit.repos.listPullRequestsAssociatedWithCommit({
+					...repoParams,
+					commit_sha: headSha,
+				});
+				const openPr = commitPrs.data.find((p) => p.state === 'open');
+				if (openPr?.number && openPr.base?.repo) {
+					prNumber = openPr.number;
+					baseOwner = openPr.base.repo.owner?.login ?? owner;
+					baseRepo = openPr.base.repo.name ?? repo;
+				}
+			} catch {
+				// commit may be in a fork (not in this repo)
+			}
+		}
+
+		// Fallback when event is from base repo but PR is from fork (commit not in base repo)
+		if (prNumber === null) {
+			const openPrs = await octokit.pulls.list({
+				...repoParams,
+				state: 'open',
+				sort: 'updated',
+				direction: 'desc',
+				per_page: 30,
+			});
+			const prByHeadSha = openPrs.data.find((p) => p.head.sha === headSha);
+			if (prByHeadSha) {
+				prNumber = prByHeadSha.number;
+				baseOwner = owner;
+				baseRepo = repo;
+			}
+		}
+
+		if (prNumber === null) {
+			await upsertCheckRun(octokit, repoParams, headSha, startTime, 'neutral', {
+				title: 'No open PR',
+				summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
+			});
+			return;
+		}
+
+		const [fullPr, reviews] = await Promise.all([
+			octokit.pulls.get({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
+			octokit.pulls.listReviews({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
+		]);
+
+		const hasReviews = reviews.data.some((r) => r.user?.type !== 'Bot');
+
+		const prForQA: PullRequestForQA = {
+			mergeable: fullPr.data.mergeable ?? undefined,
+			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
+			mergeable_state: fullPr.data.mergeable_state ?? 'unknown',
+			milestone: fullPr.data.milestone?.title,
+			url: fullPr.data.html_url ?? fullPr.data.url,
+			number: fullPr.data.number,
+			title: fullPr.data.title,
+		};
+
+		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit);
+
+		if (!result) {
+			await upsertCheckRun(octokit, repoParams, headSha, startTime, 'neutral', {
+				title: 'Could not run checks',
+				summary: 'Dionisio QA could not run (e.g. missing package.json on base ref).',
+			});
+			return;
+		}
+
+		const { title, summary } = formatCheckRunOutput(result);
+		let conclusion: 'success' | 'failure' | 'neutral';
+		let finalTitle = title;
+
+		if (!hasReviews) {
+			conclusion = 'neutral';
+			finalTitle = 'Waiting for reviews';
+		} else {
+			conclusion = result.readyToMerge ? 'success' : 'failure';
+		}
+
+		await upsertCheckRun(octokit, repoParams, headSha, startTime, conclusion, {
+			title: finalTitle,
+			summary,
+		});
+	}
+
+	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
+		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
+		const { owner, repo } = context.repo();
+		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch ?? headSha);
+	}
+
+	app.on(['check_suite.requested'], async function check(context) {
+		await runDionisioQACheck(context);
 	});
 
 	app.on(['check_suite.rerequested'], async function check(context) {
-		const checkRuns = await context.octokit.checks.listForSuite(
-			context.repo({
-				check_suite_id: context.payload.check_suite.id,
-			}),
-		);
+		await runDionisioQACheck(context);
+	});
 
-		await context.octokit.checks.update(
-			context.repo({
-				name: 'Auto label QA',
-				conclusion: 'success',
-				output: {
-					title: 'Labels are properly applied',
-					summary: 'Labels are properly applied',
-				},
-				check_run_id: checkRuns.data.check_runs[0].id,
-			}),
-		);
+	app.on(['check_suite.completed'], async (context) => {
+		if (context.payload.check_suite.conclusion !== 'success') {
+			return;
+		}
+
+		const { head_sha: headSha, head_branch: headBranch } = context.payload.check_suite;
+		const { owner, repo } = context.repo();
+
+		const runs = await context.octokit.checks.listForRef({ owner, repo, ref: headSha });
+		const dionisioRun = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+
+		if (!dionisioRun || dionisioRun.conclusion !== 'success') {
+			return;
+		}
+
+		let prNumber: number | null = null;
+		let baseOwner = owner;
+		let baseRepo = repo;
+
+		if (headBranch) {
+			const prs = await context.octokit.pulls.list({
+				owner,
+				repo,
+				state: 'open',
+				head: `${owner}:${headBranch}`,
+				per_page: 1,
+			});
+			if (prs.data[0]) {
+				prNumber = prs.data[0].number;
+			}
+		}
+
+		if (prNumber === null) {
+			const openPrs = await context.octokit.pulls.list({
+				owner,
+				repo,
+				state: 'open',
+				sort: 'updated',
+				direction: 'desc',
+				per_page: 30,
+			});
+			const match = openPrs.data.find((p) => p.head.sha === headSha);
+			if (match) {
+				prNumber = match.number;
+				baseOwner = owner;
+				baseRepo = repo;
+			}
+		}
+
+		if (prNumber === null) {
+			return;
+		}
+
+		const fullPr = await context.octokit.pulls.get({
+			owner: baseOwner,
+			repo: baseRepo,
+			pull_number: prNumber,
+		});
+
+		if (!fullPr.data.node_id) {
+			return;
+		}
+
+		try {
+			const mergeResult = await tryMergePr(context.octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
+			const existingTitle = dionisioRun.output?.title ?? 'Dionisio QA';
+			const existingSummary = dionisioRun.output?.summary ?? '';
+			await context.octokit.checks.update({
+				owner,
+				repo,
+				check_run_id: dionisioRun.id,
+				output: { title: existingTitle, summary: `${existingSummary}\n\n### Merge\n${mergeResult}` },
+			});
+		} catch (error) {
+			console.log('check_suite.completed merge error:', error);
+		}
 	});
 
 	// app.on(["projects_v2_item.created"], (context) => {
