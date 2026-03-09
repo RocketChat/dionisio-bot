@@ -1,6 +1,7 @@
 import { Context } from 'probot';
 import { runQAChecks } from './qaChecks';
 import { handleMessage } from './handleMessage';
+import { isExternalContributor } from './isExternalContributor';
 
 const { GITHUB_LOGIN = 'dionisio-bot[bot]' } = process.env;
 
@@ -13,6 +14,7 @@ export const applyLabels = async (
 		url: string;
 		number: number;
 		title: string;
+		user?: { login?: string } | null;
 	},
 	owner: string,
 	repo: string,
@@ -42,7 +44,15 @@ export const applyLabels = async (
 			return;
 		}
 
-		const { originalLabels, newLabels } = result;
+		const { originalLabels } = result;
+		let newLabels = result.newLabels;
+		const authorLogin = pullRequest.user?.login;
+		if (authorLogin) {
+			const external = await isExternalContributor(context.octokit, authorLogin);
+			if (external && !newLabels.includes('community')) {
+				newLabels = [...newLabels, 'community'];
+			}
+		}
 		const addedLabels = newLabels.filter((label) => !originalLabels.includes(label));
 		const removedLabels = originalLabels.filter((label) => !newLabels.includes(label));
 
