@@ -46,6 +46,10 @@ interface HandleJiraArg {
 		user?: {
 			login?: string;
 		} | null;
+		draft?: boolean;
+		state?: string;
+		merged?: boolean;
+		mergeable_state?: string;
 	};
 	requestedBy: string;
 	commentId: number;
@@ -120,7 +124,7 @@ export const handleJira = async ({ context, boardName, parentTaskKey, pr, reques
 		fields: {
 			project: { key: projectKey },
 			...(isSubtask ? { parent: { key: parentTaskKey } } : {}),
-			summary: `[PR #${pr.number}] ${pr.title}`,
+			summary: `${pr.title} [PR #${pr.number}]`,
 			issuetype: { name: isSubtask ? 'Sub-task' : 'Task' },
 			...(hasCommunityLabel ? { labels: ['community'] } : {}),
 			...(useFixVersions && milestoneName ? { fixVersions: [{ name: milestoneName }] } : {}),
@@ -182,6 +186,55 @@ export const handleJira = async ({ context, boardName, parentTaskKey, pr, reques
 		...context.issue(),
 		body: `${pr.body?.trim() || 'no description'} \n\n Task: [${task.key}]`,
 	});
+
+	async function updateJiraStatus(issueKey: string, targetStatus: string) {
+		const transitionsRes = await jiraFetch(jiraBaseUrl, jiraApiToken, `/rest/api/3/issue/${issueKey}/transitions`);
+		if (!transitionsRes.ok) throw new Error('Failed to fetch Jira transitions');
+		const transitionsData = (await transitionsRes.json()) as { transitions: { id: string; to: { name: string } }[] };
+		const transitions = transitionsData.transitions;
+		const transition = transitions.find((t) => t.to.name.toLowerCase() === targetStatus.toLowerCase());
+		if (!transition) throw new Error(`No Jira transition found for status: ${targetStatus}`);
+		const transitionRes = await jiraFetch(jiraBaseUrl, jiraApiToken, `/rest/api/3/issue/${issueKey}/transitions`, {
+			method: 'POST',
+			body: JSON.stringify({ transition: { id: transition.id } }),
+		});
+		if (!transitionRes.ok) throw new Error(`Failed to transition Jira issue to ${targetStatus}`);
+	}
+
+	let jiraTargetStatus: string | null = null;
+
+	if (pr.merged) {
+		jiraTargetStatus = 'Done';
+	} else if (pr.mergeable_state && pr.mergeable_state.toLowerCase().includes('queue')) {
+		jiraTargetStatus = 'QA Tested';
+	} else if (pr.state === 'open' && pr.draft) {
+		jiraTargetStatus = 'In Progress';
+	} else if (pr.state === 'open') {
+		// Check for approval status
+		const { owner, repo } = context.repo();
+		const reviews = await context.octokit.pulls.listReviews({
+			owner,
+			repo,
+			pull_number: pr.number,
+		});
+		const approved = reviews.data.some((review: { state: string }) => review.state === 'APPROVED');
+		if (approved) {
+			jiraTargetStatus = 'QA Tested';
+		} else {
+			jiraTargetStatus = 'Waiting Review';
+		}
+	}
+
+	if (task.key && jiraTargetStatus) {
+		try {
+			await updateJiraStatus(task.key, jiraTargetStatus);
+		} catch (err: unknown) {
+			await context.octokit.issues.createComment({
+				...context.issue(),
+				body: `⚠️ **Dionisio (Jira)**\n\nFailed to update Jira status to "${jiraTargetStatus}": ${(err as Error).message}`,
+			});
+		}
+	}
 
 	const warnings: string[] = [];
 	if (milestoneNotOnBoard && milestoneName) {
