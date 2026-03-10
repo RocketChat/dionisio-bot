@@ -11,8 +11,8 @@ export const isExternalContributor = async (
 		return false;
 	}
 	try {
-		const { data: orgs } = await octokit.orgs.listForUser({ username });
-		return !orgs.some(({ login }) => login === org);
+		await octokit.orgs.checkMembershipForUser({ org, username });
+		return false;
 	} catch {
 		return true;
 	}
