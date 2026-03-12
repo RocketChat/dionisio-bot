@@ -5,6 +5,8 @@ import { isExternalContributor } from './isExternalContributor';
 
 const { GITHUB_LOGIN = 'dionisio-bot[bot]' } = process.env;
 
+const COMMUNITY_LABEL_EXCLUDED_AUTHORS = [GITHUB_LOGIN, 'github-copilot[bot]'];
+
 export const applyLabels = async (
 	pullRequest: {
 		mergeable?: boolean | null;
@@ -47,7 +49,10 @@ export const applyLabels = async (
 		const { originalLabels } = result;
 		let newLabels = result.newLabels;
 		const authorLogin = pullRequest.user?.login;
-		if (authorLogin) {
+		if (
+			authorLogin &&
+			!COMMUNITY_LABEL_EXCLUDED_AUTHORS.includes(authorLogin)
+		) {
 			const external = await isExternalContributor(context.octokit, authorLogin);
 			if (external && !newLabels.includes('community')) {
 				newLabels = [...newLabels, 'community'];
