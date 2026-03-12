@@ -191,7 +191,7 @@ export = (app: Probot) => {
 		/**
 		 * Gets the latest release of the repository
 		 * check if exists a branch with the latest version
-		 * triggers a workflow_dispatch event to create a new patch release
+		 * triggers a repository_dispatch (release-patch) event to create a new patch release
 		 * creates a project with the latest version
 		 */
 
