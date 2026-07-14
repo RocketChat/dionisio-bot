@@ -1,5 +1,38 @@
 import type { Context } from 'probot';
 
+const hasChangesetFile = async (octokit: Context['octokit'], owner: string, repo: string, pull_number: number): Promise<boolean> => {
+	const per_page = 100;
+
+	for (let page = 1; page <= 10; page += 1) {
+		const { data } = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}/files', {
+			owner,
+			repo,
+			pull_number,
+			per_page,
+			page,
+			headers: {
+				'X-GitHub-Api-Version': '2022-11-28',
+			},
+		});
+
+		if (!Array.isArray(data) || data.length === 0) return false;
+
+		if (
+			data.some((f) => {
+				if (!f || typeof f !== 'object') return false;
+				const filename = (f as { filename?: unknown }).filename;
+				return typeof filename === 'string' && /^\.changeset\/.+\.md$/i.test(filename);
+			})
+		) {
+			return true;
+		}
+
+		if (data.length < per_page) return false;
+	}
+
+	return false;
+};
+
 export interface QAStep {
 	name: string;
 	passed: boolean;
@@ -111,6 +144,9 @@ export const runQAChecks = async (
 				? { currentVersion: version, targetVersion: targetingVersion[0] }
 				: undefined;
 
+		const needsChangeset = !/^(chore|test|ci|regression|refactor|revert)\b/i.test(pullRequest.title);
+		const hasChangeset = needsChangeset ? await hasChangesetFile(octokit, owner, repo, pullRequest.number) : true;
+
 		const steps: QAStep[] = [
 			{
 				name: 'No merge conflicts',
@@ -144,9 +180,15 @@ export const runQAChecks = async (
 					? `Targeting wrong base: should target ${wrongVersion.targetVersion}, but targets ${wrongVersion.currentVersion}`
 					: undefined,
 			},
+			{
+				name: 'Has changeset (if required)',
+				passed: hasChangeset,
+				message: !hasChangeset ? 'This PR requires a changeset file in `.changeset/*.md`' : undefined,
+			},
 		];
 
-		const readyToMerge = !hasConflicts && assured && Boolean(pullRequest.mergeable) && hasMilestone && !hasInvalidTitle && !wrongVersion;
+		const readyToMerge =
+			!hasConflicts && assured && Boolean(pullRequest.mergeable) && hasMilestone && !hasInvalidTitle && !wrongVersion && hasChangeset;
 
 		const newLabels = [...new Set([...currentLabels, 'stat: ready to merge', 'stat: conflict', 'Invalid PR Title'])].filter((label) => {
 			if (label === 'stat: conflict') return hasConflicts;
