@@ -1,38 +1,5 @@
 import type { Context } from 'probot';
 
-const hasChangesetFile = async (octokit: Context['octokit'], owner: string, repo: string, pull_number: number): Promise<boolean> => {
-	const per_page = 100;
-
-	for (let page = 1; page <= 10; page += 1) {
-		const { data } = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}/files', {
-			owner,
-			repo,
-			pull_number,
-			per_page,
-			page,
-			headers: {
-				'X-GitHub-Api-Version': '2022-11-28',
-			},
-		});
-
-		if (!Array.isArray(data) || data.length === 0) return false;
-
-		if (
-			data.some((f) => {
-				if (!f || typeof f !== 'object') return false;
-				const filename = (f as { filename?: unknown }).filename;
-				return typeof filename === 'string' && /^\.changeset\/.+\.md$/i.test(filename);
-			})
-		) {
-			return true;
-		}
-
-		if (data.length < per_page) return false;
-	}
-
-	return false;
-};
-
 export interface QAStep {
 	name: string;
 	passed: boolean;
@@ -55,12 +22,17 @@ export interface QAChecksResult {
 	newLabels: string[];
 }
 
-const getProjects = async (octokit: Context['octokit'], url: string): Promise<boolean> => {
+const getProjectsAndFiles = async (octokit: Context['octokit'], url: string): Promise<{ hasProject: boolean; changedFiles: string[] }> => {
 	const query = `query ($pull_request_url: URI!){
-    totalCount :resource(url:$pull_request_url) {
+    resource(url:$pull_request_url) {
       ... on PullRequest {
         projectsV2{
           totalCount
+        }
+        files(first: 50) {
+          nodes {
+            path
+          }
         }
       }
     }
@@ -69,14 +41,20 @@ const getProjects = async (octokit: Context['octokit'], url: string): Promise<bo
 	const result = (await octokit.graphql(query, {
 		pull_request_url: url,
 	})) as {
-		totalCount?: {
+		resource?: {
 			projectsV2: {
 				totalCount: number;
+			};
+			files?: {
+				nodes: { path: string }[];
 			};
 		};
 	};
 
-	return Boolean(result.totalCount?.projectsV2.totalCount);
+	return {
+		hasProject: Boolean(result.resource?.projectsV2.totalCount),
+		changedFiles: result.resource?.files?.nodes.map((n) => n.path) ?? [],
+	};
 };
 
 const VALID_PR_TITLE_REGEXP =
@@ -123,7 +101,8 @@ export const runQAChecks = async (
 			.filter(Boolean)
 			.filter((milestone): milestone is string => Boolean(milestone && /(\d+\.\d+(\.\d+)?)/.test(milestone)));
 
-		const hasMilestone = Boolean(pullRequest.milestone || (await getProjects(octokit, pullRequest.url)));
+		const { hasProject, changedFiles } = await getProjectsAndFiles(octokit, pullRequest.url);
+		const hasMilestone = Boolean(pullRequest.milestone || hasProject);
 
 		const [version] = versionFromPackage.split('-');
 		const isTargetingRightVersion = targetingVersion.some((m) => version.startsWith(m));
@@ -145,7 +124,8 @@ export const runQAChecks = async (
 				: undefined;
 
 		const needsChangeset = !/^(chore|test|ci|regression|refactor|revert)\b/i.test(pullRequest.title);
-		const hasChangeset = needsChangeset ? await hasChangesetFile(octokit, owner, repo, pullRequest.number) : true;
+		// ponytail: only first 50 files checked — PR files come back alphabetically (observed, not documented), so `.changeset/` sorts first
+		const hasChangeset = !needsChangeset || changedFiles.some((path) => /^\.changeset\/.+\.md$/i.test(path));
 
 		const steps: QAStep[] = [
 			{
