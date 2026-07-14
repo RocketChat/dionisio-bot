@@ -124,7 +124,6 @@ export const runQAChecks = async (
 				: undefined;
 
 		const needsChangeset = !/^(chore|test|ci|regression|refactor|revert)\b/i.test(pullRequest.title);
-		// ponytail: only first 50 files checked — PR files come back alphabetically (observed, not documented), so `.changeset/` sorts first
 		const hasChangeset = !needsChangeset || changedFiles.some((path) => /^\.changeset\/.+\.md$/i.test(path));
 
 		const steps: QAStep[] = [
