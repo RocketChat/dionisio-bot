@@ -3,7 +3,15 @@ import { runQAChecks } from './qaChecks';
 import { handleMessage } from './handleMessage';
 import { isExternalContributor } from './isExternalContributor';
 
-const { GITHUB_LOGIN = 'dionisio-bot[bot]' } = process.env;
+const { GITHUB_LOGIN = 'dionisio-bot[bot]', COMMUNITY_LABEL_EXCLUDED_EXTRA = '' } = process.env;
+
+const COMMUNITY_LABEL_EXCLUDED_AUTHORS = [
+	GITHUB_LOGIN,
+	'github-copilot[bot]',
+	...COMMUNITY_LABEL_EXCLUDED_EXTRA.split(',')
+		.map((login) => login.trim())
+		.filter(Boolean),
+];
 
 export const applyLabels = async (
 	pullRequest: {
@@ -47,7 +55,7 @@ export const applyLabels = async (
 		const { originalLabels } = result;
 		let newLabels = result.newLabels;
 		const authorLogin = pullRequest.user?.login;
-		if (authorLogin) {
+		if (authorLogin && !COMMUNITY_LABEL_EXCLUDED_AUTHORS.includes(authorLogin)) {
 			const external = await isExternalContributor(context.octokit, authorLogin);
 			if (external && !newLabels.includes('community')) {
 				newLabels = [...newLabels, 'community'];
