@@ -49,10 +49,7 @@ export const applyLabels = async (
 		const { originalLabels } = result;
 		let newLabels = result.newLabels;
 		const authorLogin = pullRequest.user?.login;
-		if (
-			authorLogin &&
-			!COMMUNITY_LABEL_EXCLUDED_AUTHORS.includes(authorLogin)
-		) {
+		if (authorLogin && !COMMUNITY_LABEL_EXCLUDED_AUTHORS.includes(authorLogin)) {
 			const external = await isExternalContributor(context.octokit, authorLogin);
 			if (external && !newLabels.includes('community')) {
 				newLabels = [...newLabels, 'community'];
