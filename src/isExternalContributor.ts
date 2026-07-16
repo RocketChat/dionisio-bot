@@ -10,9 +10,14 @@ export const isExternalContributor = async (
 	if (!username) {
 		return false;
 	}
+	// bots are never community contributors
+	if (username.endsWith('[bot]')) {
+		return false;
+	}
 	try {
-		const { data: orgs } = await octokit.orgs.listForUser({ username });
-		return !orgs.some(({ login }) => login === org);
+		// checkMembershipForUser sees private memberships too; listForUser only returns public ones
+		await octokit.orgs.checkMembershipForUser({ org, username });
+		return false;
 	} catch {
 		return true;
 	}
