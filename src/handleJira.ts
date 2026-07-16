@@ -81,6 +81,13 @@ async function projectHasVersion(jiraBaseUrl: string, jiraApiToken: string, proj
 	return Array.isArray(versions) && versions.some((v) => v.name === versionName);
 }
 
+async function getIssueType(jiraBaseUrl: string, jiraApiToken: string, issueKey: string): Promise<string | undefined> {
+	const res = await jiraFetch(jiraBaseUrl, jiraApiToken, `/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=issuetype`);
+	if (!res.ok) return undefined;
+	const issue = (await res.json()) as { fields?: { issuetype?: { name?: string } } };
+	return issue.fields?.issuetype?.name;
+}
+
 function buildDescriptionContent(usePlainText: boolean, pr: HandleJiraArg['pr'], requestedBy: string): AdfBlock[] {
 	const rawBody = pr.body?.trim() || 'no description';
 	const descriptionBlock = usePlainText
@@ -101,8 +108,11 @@ export const handleJira = async ({ context, boardName, parentTaskKey, pr, reques
 	const jiraBaseUrl = getEnv('JIRA_BASE_URL').replace(/\/$/, '');
 	const jiraApiToken = getEnv('JIRA_API_TOKEN');
 	const hasCommunityLabel = pr.labels.some((label) => label.toLowerCase() === 'community');
-	const isSubtask = Boolean(parentTaskKey);
 	const projectKey = parentTaskKey ? parentTaskKey.replace(/-\d+$/, '') : boardName;
+
+	// Epic parent → child is a Task; Task parent → child is a Sub-task.
+	const parentIsEpic = parentTaskKey ? (await getIssueType(jiraBaseUrl, jiraApiToken, parentTaskKey))?.toLowerCase() === 'epic' : false;
+	const isSubtask = Boolean(parentTaskKey) && !parentIsEpic;
 
 	const milestoneName = pr.milestone?.trim();
 	let useFixVersions = Boolean(milestoneName);
@@ -119,7 +129,7 @@ export const handleJira = async ({ context, boardName, parentTaskKey, pr, reques
 	const buildPayload = (usePlainTextDescription: boolean) => ({
 		fields: {
 			project: { key: projectKey },
-			...(isSubtask ? { parent: { key: parentTaskKey } } : {}),
+			...(parentTaskKey ? { parent: { key: parentTaskKey } } : {}),
 			summary: `[PR #${pr.number}] ${pr.title}`,
 			issuetype: { name: isSubtask ? 'Sub-task' : 'Task' },
 			...(hasCommunityLabel ? { labels: ['community'] } : {}),
