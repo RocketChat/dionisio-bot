@@ -7,6 +7,7 @@ import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
 import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
+import { isExternalContributor } from './isExternalContributor';
 
 export = (app: Probot) => {
 	app.log.useLevelLabels = false;
@@ -94,11 +95,7 @@ export = (app: Probot) => {
 
 		const [, command, args] = comment.body.match(matcher) || [];
 
-		const orgs = await context.octokit.orgs.listForUser({
-			username: comment.user.login,
-		});
-
-		if (!orgs.data.some(({ login }) => login === 'RocketChat')) {
+		if (await isExternalContributor(context.octokit, comment.user.login)) {
 			return;
 		}
 
