@@ -7,6 +7,7 @@ import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
 import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
+import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 
 export = (app: Probot) => {
@@ -448,6 +449,25 @@ export = (app: Probot) => {
 		]);
 
 		const hasReviews = reviews.data.some((r) => r.user?.type !== 'Bot');
+
+		try {
+			await enforceChangesetMilestone({
+				octokit,
+				owner: baseOwner,
+				repo: baseRepo,
+				pr: {
+					number: prNumber,
+					milestone: fullPr.data.milestone?.title,
+					head: {
+						owner: fullPr.data.head.repo?.owner.login ?? baseOwner,
+						repo: fullPr.data.head.repo?.name ?? baseRepo,
+						sha: fullPr.data.head.sha,
+					},
+				},
+			});
+		} catch (error) {
+			console.log('enforceChangesetMilestone->', error);
+		}
 
 		const prForQA: PullRequestForQA = {
 			mergeable: fullPr.data.mergeable ?? undefined,
