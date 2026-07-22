@@ -113,9 +113,12 @@ export const findChangesetProblems = (
 };
 
 const formatReviewBody = (problems: string[]): string =>
-	[`### Changeset mismatch`, '', ...problems.flatMap((problem) => [problem, '']), `Please align the PR title, milestone and changesets.`].join(
-		'\n',
-	);
+	[
+		`### Changeset mismatch`,
+		'',
+		...problems.flatMap((problem) => [problem, '']),
+		`Please align the PR title, milestone and changesets.`,
+	].join('\n');
 
 /**
  * Requests changes when the PR title, milestone and changesets disagree about
