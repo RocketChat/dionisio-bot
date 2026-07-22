@@ -25,6 +25,9 @@ export const maxBumpForMilestone = (milestone?: string): Bump | null => {
 	return 'major';
 };
 
+/** Conventional-commit breaking marker: `feat!: ...` or `feat(scope)!: ...` */
+export const titleIndicatesBreaking = (title?: string): boolean => /^\w+(\([^)]*\))?!:/.test(title ?? '');
+
 export const parseChangesetBumps = (content: string): Bump[] => {
 	const [, frontmatter] = content.match(/^---\r?\n([\s\S]*?)\r?\n---/) ?? [];
 	if (!frontmatter) {
@@ -76,20 +79,48 @@ const getChangesetFiles = async (
 	);
 };
 
-const formatReviewBody = (milestone: string, maxBump: Bump, invalid: { filename: string; invalid: Bump[] }[]): string =>
-	[
-		`### Changeset x Milestone mismatch`,
-		'',
-		`The milestone \`${milestone}\` only allows \`${maxBump}\` (or lower) changesets, but:`,
-		'',
-		...invalid.map(({ filename, invalid: bumps }) => `- \`${filename}\` declares \`${bumps.join('`, `')}\``),
-		'',
-		`Please adjust the changeset bump or the milestone.`,
-	].join('\n');
+export const findChangesetProblems = (
+	files: { filename: string; bumps: Bump[] }[],
+	milestone: string | undefined,
+	title: string | undefined,
+): string[] => {
+	const problems: string[] = [];
+
+	const maxBump = maxBumpForMilestone(milestone);
+	const invalid = maxBump && maxBump !== 'major' ? findInvalidBumps(files, maxBump) : [];
+	if (invalid.length > 0) {
+		problems.push(
+			[
+				`The milestone \`${milestone}\` only allows \`${maxBump}\` (or lower) changesets, but:`,
+				'',
+				...invalid.map(({ filename, invalid: bumps }) => `- \`${filename}\` declares \`${bumps.join('`, `')}\``),
+			].join('\n'),
+		);
+	}
+
+	const hasMajor = files.some(({ bumps }) => bumps.includes('major'));
+	const breakingTitle = titleIndicatesBreaking(title);
+	if (breakingTitle && !hasMajor) {
+		problems.push('The PR title indicates a breaking change (`!`), but no changeset declares a `major` bump — at least one is required.');
+	}
+	if (!breakingTitle && hasMajor) {
+		problems.push(
+			'A changeset declares a `major` bump, but the PR title does not indicate a breaking change (use `type!: ...` or `type(scope)!: ...`).',
+		);
+	}
+
+	return problems;
+};
+
+const formatReviewBody = (problems: string[]): string =>
+	[`### Changeset mismatch`, '', ...problems.flatMap((problem) => [problem, '']), `Please align the PR title, milestone and changesets.`].join(
+		'\n',
+	);
 
 /**
- * Requests changes when a changeset declares a bump higher than the milestone allows,
- * and dismisses that review once the changesets (or milestone) are fixed.
+ * Requests changes when the PR title, milestone and changesets disagree about
+ * the release bump (breaking change or bump higher than the milestone allows),
+ * and dismisses that review once they are aligned.
  */
 export const enforceChangesetMilestone = async ({
 	octokit,
@@ -102,32 +133,31 @@ export const enforceChangesetMilestone = async ({
 	repo: string;
 	pr: {
 		number: number;
+		title?: string;
 		milestone?: string;
 		head: { owner: string; repo: string; sha: string };
 	};
 }): Promise<void> => {
-	const maxBump = maxBumpForMilestone(pr.milestone);
-
-	const invalid =
-		maxBump && maxBump !== 'major' ? findInvalidBumps(await getChangesetFiles(octokit, owner, repo, pr.number, pr.head), maxBump) : [];
+	const files = await getChangesetFiles(octokit, owner, repo, pr.number, pr.head);
+	const problems = findChangesetProblems(files, pr.milestone, pr.title);
 
 	const reviews = await octokit.pulls.listReviews({ owner, repo, pull_number: pr.number });
 	const botReview = reviews.data.find((review) => review.user?.login === GITHUB_LOGIN && review.state === 'CHANGES_REQUESTED');
 
-	if (invalid.length === 0) {
+	if (problems.length === 0) {
 		if (botReview) {
 			await octokit.pulls.dismissReview({
 				owner,
 				repo,
 				pull_number: pr.number,
 				review_id: botReview.id,
-				message: 'Changesets now match the milestone',
+				message: 'Changesets now match the title and milestone',
 			});
 		}
 		return;
 	}
 
-	const body = formatReviewBody(pr.milestone as string, maxBump as Bump, invalid);
+	const body = formatReviewBody(problems);
 
 	if (botReview?.body === body) {
 		return;

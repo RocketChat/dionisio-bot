@@ -457,6 +457,7 @@ export = (app: Probot) => {
 				repo: baseRepo,
 				pr: {
 					number: prNumber,
+					title: fullPr.data.title,
 					milestone: fullPr.data.milestone?.title,
 					head: {
 						owner: fullPr.data.head.repo?.owner.login ?? baseOwner,

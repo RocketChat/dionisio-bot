@@ -1,4 +1,5 @@
-import { maxBumpForMilestone, parseChangesetBumps, findInvalidBumps } from '../src/checkChangesets';
+import { maxBumpForMilestone, parseChangesetBumps, findInvalidBumps, titleIndicatesBreaking, findChangesetProblems } from '../src/checkChangesets';
+import type { Bump } from '../src/checkChangesets';
 
 describe('maxBumpForMilestone', () => {
 	test('patch milestone only allows patch', () => {
@@ -69,5 +70,42 @@ describe('findInvalidBumps', () => {
 
 	test('major milestone flags nothing', () => {
 		expect(findInvalidBumps(files, 'major')).toEqual([]);
+	});
+});
+
+describe('titleIndicatesBreaking', () => {
+	test('detects conventional-commit breaking marker', () => {
+		expect(titleIndicatesBreaking('feat!: drop legacy API')).toBe(true);
+		expect(titleIndicatesBreaking('feat(core)!: drop legacy API')).toBe(true);
+	});
+
+	test('regular titles are not breaking', () => {
+		expect(titleIndicatesBreaking('feat: add thing')).toBe(false);
+		expect(titleIndicatesBreaking('fix(core): oops')).toBe(false);
+		expect(titleIndicatesBreaking('Wow! great PR')).toBe(false);
+		expect(titleIndicatesBreaking(undefined)).toBe(false);
+	});
+});
+
+describe('findChangesetProblems', () => {
+	const major = [{ filename: '.changeset/big.md', bumps: ['major'] as Bump[] }];
+	const patch = [{ filename: '.changeset/small.md', bumps: ['patch'] as Bump[] }];
+
+	test('breaking title requires at least one major changeset', () => {
+		expect(findChangesetProblems(patch, '8.0.0', 'feat!: breaking')).toHaveLength(1);
+		expect(findChangesetProblems([], '8.0.0', 'feat!: breaking')).toHaveLength(1);
+		expect(findChangesetProblems(major, '8.0.0', 'feat!: breaking')).toEqual([]);
+	});
+
+	test('major changeset requires breaking title', () => {
+		expect(findChangesetProblems(major, '8.0.0', 'feat: not breaking')).toHaveLength(1);
+	});
+
+	test('milestone and title problems are both reported', () => {
+		expect(findChangesetProblems(major, '7.10.1', 'feat: not breaking')).toHaveLength(2);
+	});
+
+	test('aligned patch PR has no problems', () => {
+		expect(findChangesetProblems(patch, '7.10.1', 'fix: something')).toEqual([]);
 	});
 });
