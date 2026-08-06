@@ -165,12 +165,10 @@ export const getProjectsV2 = async (context: Context, release: string) => {
 };
 
 const triggerWorkflow = async (context: Context, base = 'master') =>
-	context.octokit.actions.createWorkflowDispatch({
+	context.octokit.repos.createDispatchEvent({
 		...context.repo(),
-		inputs: {
-			'name': 'patch',
+		event_type: 'release-patch',
+		client_payload: {
 			'base-ref': base,
 		},
-		ref: 'refs/heads/develop',
-		workflow_id: 'new-release.yml',
 	});
