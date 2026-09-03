@@ -19,8 +19,13 @@
     "test": "jest"
   },
   "dependencies": {
+    "@octokit/webhooks": "^12.3.1",
+    "dotenv": "^16.5.0",
     "github-cherry-pick": "^1.1.0",
     "md-to-adf": "^0.6.4",
+    "pino": "^9.7.0",
+    "pino-http": "^10.5.0",
+    "pino-pretty": "^13.0.0",
     "probot": "^13.4.3",
     "semver": "^7.6.0"
   },
