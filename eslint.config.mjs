@@ -9,4 +9,9 @@ export default tseslint.config(
 	tseslint.configs.stylistic,
 	eslintConfigPrettier,
 	eslintPluginPrettierRecommended,
+	{
+		rules: {
+			'no-console': 'error',
+		},
+	},
 );
