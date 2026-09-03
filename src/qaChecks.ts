@@ -22,12 +22,17 @@ export interface QAChecksResult {
 	newLabels: string[];
 }
 
-const getProjects = async (octokit: Context['octokit'], url: string): Promise<boolean> => {
+const getProjectsAndFiles = async (octokit: Context['octokit'], url: string): Promise<{ hasProject: boolean; changedFiles: string[] }> => {
 	const query = `query ($pull_request_url: URI!){
-    totalCount :resource(url:$pull_request_url) {
+    resource(url:$pull_request_url) {
       ... on PullRequest {
         projectsV2{
           totalCount
+        }
+        files(first: 50) {
+          nodes {
+            path
+          }
         }
       }
     }
@@ -36,14 +41,20 @@ const getProjects = async (octokit: Context['octokit'], url: string): Promise<bo
 	const result = (await octokit.graphql(query, {
 		pull_request_url: url,
 	})) as {
-		totalCount?: {
+		resource?: {
 			projectsV2: {
 				totalCount: number;
+			};
+			files?: {
+				nodes: { path: string }[];
 			};
 		};
 	};
 
-	return Boolean(result.totalCount?.projectsV2.totalCount);
+	return {
+		hasProject: Boolean(result.resource?.projectsV2.totalCount),
+		changedFiles: result.resource?.files?.nodes.map((n) => n.path) ?? [],
+	};
 };
 
 const VALID_PR_TITLE_REGEXP =
@@ -90,7 +101,8 @@ export const runQAChecks = async (
 			.filter(Boolean)
 			.filter((milestone): milestone is string => Boolean(milestone && /(\d+\.\d+(\.\d+)?)/.test(milestone)));
 
-		const hasMilestone = Boolean(pullRequest.milestone || (await getProjects(octokit, pullRequest.url)));
+		const { hasProject, changedFiles } = await getProjectsAndFiles(octokit, pullRequest.url);
+		const hasMilestone = Boolean(pullRequest.milestone || hasProject);
 
 		const [version] = versionFromPackage.split('-');
 		const isTargetingRightVersion = targetingVersion.some((m) => version.startsWith(m));
@@ -110,6 +122,10 @@ export const runQAChecks = async (
 			hasMilestone && !isTargetingRightVersion && targetingVersion[0]
 				? { currentVersion: version, targetVersion: targetingVersion[0] }
 				: undefined;
+
+		const needsChangeset =
+			!originalLabels.includes('Skip Changeset') && !/^(chore|test|ci|regression|refactor|revert)\b/i.test(pullRequest.title);
+		const hasChangeset = !needsChangeset || changedFiles.some((path) => /^\.changeset\/.+\.md$/i.test(path));
 
 		const steps: QAStep[] = [
 			{
@@ -144,9 +160,15 @@ export const runQAChecks = async (
 					? `Targeting wrong base: should target ${wrongVersion.targetVersion}, but targets ${wrongVersion.currentVersion}`
 					: undefined,
 			},
+			{
+				name: 'Has changeset (if required)',
+				passed: hasChangeset,
+				message: !hasChangeset ? 'This PR requires a changeset file in `.changeset/*.md`' : undefined,
+			},
 		];
 
-		const readyToMerge = !hasConflicts && assured && Boolean(pullRequest.mergeable) && hasMilestone && !hasInvalidTitle && !wrongVersion;
+		const readyToMerge =
+			!hasConflicts && assured && Boolean(pullRequest.mergeable) && hasMilestone && !hasInvalidTitle && !wrongVersion && hasChangeset;
 
 		const newLabels = [...new Set([...currentLabels, 'stat: ready to merge', 'stat: conflict', 'Invalid PR Title'])].filter((label) => {
 			if (label === 'stat: conflict') return hasConflicts;
