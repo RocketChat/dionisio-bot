@@ -2,13 +2,14 @@ import { Context } from 'probot';
 import semver from 'semver';
 import { upsertProject } from './upsertProject';
 import { ErrorCherryPickConflict } from './errors/ErrorCherryPickConflict';
-import { consoleProps } from './createPullRequest';
+import type { Log } from './logger';
 
 export const handleBackport = async ({
 	context,
 	pr,
 	tags,
 	assignee,
+	log,
 }: {
 	context: Context;
 	pr: {
@@ -20,8 +21,10 @@ export const handleBackport = async ({
 	};
 	tags: string[];
 	assignee: string;
+	log: Log;
 }) => {
 	if (tags.length === 0) {
+		log.debug('backport requested without tags');
 		await context.octokit.issues.createComment({
 			...context.issue(),
 			body: 'Please provide a list of tags to backport',
@@ -34,7 +37,7 @@ export const handleBackport = async ({
 	try {
 		await Promise.allSettled(
 			tags.map(async (tag): Promise<void> => {
-				console.log('tag', tag);
+				const tagLog = log.child({ tag });
 				const result = await context.octokit.repos
 					.getReleaseByTag({
 						...context.repo(),
@@ -43,6 +46,7 @@ export const handleBackport = async ({
 					.catch(() => undefined);
 
 				if (result?.data) {
+					tagLog.info('release already exists, skipping backport');
 					await context.octokit.issues.createComment({
 						...context.issue(),
 						body: `${tag} already exists in the project`,
@@ -52,15 +56,14 @@ export const handleBackport = async ({
 
 				const ver = semver.patch(tag) - 1;
 
-				console.log('ver', ver);
-
 				if (ver < 0) {
+					tagLog.debug('tag has no previous patch version, skipping');
 					return;
 				}
 
 				const previousTag = semver.major(tag) + '.' + semver.minor(tag) + '.' + ver;
 
-				console.log('previousTag', previousTag);
+				tagLog.debug({ previousTag }, 'backporting');
 
 				try {
 					await context.octokit.repos.getReleaseByTag({
@@ -68,30 +71,32 @@ export const handleBackport = async ({
 						tag: previousTag,
 					});
 				} catch (err) {
-					console.log('Failed to get previous tag', previousTag, err);
+					tagLog.warn({ err, previousTag }, 'previous release tag not found, aborting backport');
 					throw err;
 				}
 				try {
 					await upsertProject(
 						context,
 						tag,
-						consoleProps('upsertProject', {
+						{
 							id: pr.node_id,
 							sha: pr.merge_commit_sha,
 							title: pr.title,
 							number: pr.number,
 							author: pr.author,
-						}),
+						},
 						previousTag,
 						assignee,
+						tagLog,
 					);
 				} catch (err) {
 					if (err instanceof ErrorCherryPickConflict) {
-						context.octokit.issues.createComment({
+						tagLog.warn({ err }, 'backport has cherry-pick conflicts');
+						await context.octokit.issues.createComment({
 							...context.issue(),
 							body: `
   Sorry, I couldn't do that backport because of conflicts. Could you please solve them?
-  
+
   you can do so by running the following commands:
   \`\`\`
   git fetch
@@ -100,17 +105,18 @@ export const handleBackport = async ({
   // solve the conflict
   git push
   \`\`\`
-  
-  
+
+
   after that just run \`/backport ${tag}\` again
   `,
 						});
+						return;
 					}
-					console.log(err);
+					tagLog.error({ err }, 'backport failed');
 				}
 			}),
 		);
 	} catch (err) {
-		console.log(err);
+		log.error({ err }, 'backport failed');
 	}
 };

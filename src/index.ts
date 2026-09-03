@@ -212,6 +212,7 @@ export = (app: Probot) => {
 						author: pr.data.user?.login,
 					},
 					assignee: comment.user.login,
+					log,
 				});
 
 				await context.octokit.reactions.createForIssueComment({
@@ -253,6 +254,7 @@ export = (app: Probot) => {
 					pr: { ...pr.data, author: pr.data.user?.login },
 					tags,
 					assignee: comment.user.login,
+					log,
 				});
 			} catch (e) {
 				// add a reaction to the comment
@@ -281,6 +283,7 @@ export = (app: Probot) => {
 					context,
 					backportNumber: parseInt(backportNumber),
 					release,
+					log,
 				});
 			}
 		}

@@ -1,18 +1,9 @@
 import { Context } from 'probot';
+import type { Log } from './logger';
 
-export const cherryPick = ({ context, commits, head }: { context: Context; commits: string[]; head: string }) => {
-	console.log(
-		'[CHERRY PICK]',
-		JSON.stringify(
-			{
-				head,
-				commits,
-			},
-			null,
-			2,
-		),
-	);
-	return cp(context, {
+export const cherryPick = ({ context, commits, head, log }: { context: Context; commits: string[]; head: string; log: Log }) => {
+	log.debug({ head, commits }, 'cherry-picking');
+	return cp(context, log, {
 		commit: commits[0],
 		base: head,
 	});
@@ -20,6 +11,7 @@ export const cherryPick = ({ context, commits, head }: { context: Context; commi
 
 const cp = async (
 	context: Context,
+	log: Log,
 	{
 		commit,
 		base,
@@ -42,7 +34,7 @@ const cp = async (
 	});
 
 	try {
-		const sha = await perform(context, {
+		const sha = await perform(context, log, {
 			base: `cherry-pick-${base}`,
 			commit,
 		});
@@ -60,7 +52,8 @@ const cp = async (
 		});
 		return sha;
 	} catch (e) {
-		console.log(e);
+		// the caller reports the failure; here we only clean up the temp ref
+		log.debug({ err: e, base, commit }, 'cherry-pick failed, removing temp ref');
 		await octokit.git.deleteRef({
 			...context.repo(),
 			ref: `heads/cherry-pick-${base}`,
@@ -72,6 +65,7 @@ const cp = async (
 
 const perform = async (
 	context: Context,
+	log: Log,
 	{
 		commit: sha,
 		base,
@@ -109,7 +103,7 @@ const perform = async (
 		parents: [parentSha],
 	});
 
-	console.log('tempCommit', tempCommit);
+	log.debug({ tempCommit: tempCommit.sha, base }, 'temp commit created');
 
 	// Temporarily force the branch over to the temp commit
 	await octokit.git.updateRef({
@@ -139,7 +133,7 @@ const perform = async (
 		parents: [branch.commit.sha],
 	});
 
-	console.log(cherry);
+	log.debug({ cherry: cherry.sha, base }, 'cherry-pick commit created');
 
 	// Replace the temp commit with the cherry-pick commit
 	await octokit.git.updateRef({

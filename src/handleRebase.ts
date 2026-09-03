@@ -1,10 +1,21 @@
 import { Context } from 'probot';
 import semver from 'semver';
 import { cherryPick } from './cherryPick';
-import { consoleProps } from './createPullRequest';
+import type { Log } from './logger';
 
-export const handleRebase = async ({ context, backportNumber, release }: { context: Context; backportNumber: number; release: string }) => {
+export const handleRebase = async ({
+	context,
+	backportNumber,
+	release,
+	log,
+}: {
+	context: Context;
+	backportNumber: number;
+	release: string;
+	log: Log;
+}) => {
 	if (!semver.valid(release)) {
+		log.warn({ release }, 'rebase requested for an invalid release version');
 		await context.octokit.issues.createComment({
 			...context.issue(),
 			body: 'Could not find a valid version to patch',
@@ -22,21 +33,21 @@ export const handleRebase = async ({ context, backportNumber, release }: { conte
 		ref: `heads/release-${release}`,
 	});
 
-	await context.octokit.git.createRef(
-		consoleProps('Creating temp ref', {
-			...context.repo(),
-			ref: `refs/heads/rebase-backport-${release}-${backportNumber}`,
-			sha: releaseBrach.data.object.sha,
-		}),
-	);
+	const tempRef = `rebase-backport-${release}-${backportNumber}`;
+	log.debug({ ref: tempRef, sha: releaseBrach.data.object.sha }, 'creating temp rebase ref');
+	await context.octokit.git.createRef({
+		...context.repo(),
+		ref: `refs/heads/${tempRef}`,
+		sha: releaseBrach.data.object.sha,
+	});
 
 	try {
 		if (backportPR.data.merge_commit_sha) {
 			const newHeadSha = await cherryPick({
-				...context.repo(),
-				commits: [backportPR.data.merge_commit_sha],
-				head: `rebase-backport-${release}-${backportNumber}`,
 				context,
+				commits: [backportPR.data.merge_commit_sha],
+				head: tempRef,
+				log,
 			});
 
 			await context.octokit.git.updateRef({
@@ -45,8 +56,10 @@ export const handleRebase = async ({ context, backportNumber, release }: { conte
 				force: true,
 				sha: newHeadSha,
 			});
+			log.info({ backportNumber, release, sha: newHeadSha }, 'backport branch rebased');
 		}
 	} catch (err) {
+		log.warn({ err, backportNumber, release }, 'rebase failed, restoring backport branch');
 		await context.octokit.issues.createComment({
 			...context.issue(),
 			body: `
@@ -76,6 +89,6 @@ git push
 
 	await context.octokit.git.deleteRef({
 		...context.repo(),
-		ref: `heads/rebase-backport-${release}-${backportNumber}`,
+		ref: `heads/${tempRef}`,
 	});
 };
