@@ -1,0 +1,19 @@
+eslint.config.mjs
+  s_4571ba7f3e2ea7::t_a3134dcb9982be 12-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "60b59a98ad37b6a0b9066c59f765876e0e8c7874",
+  "prompts": {},
+  "sessions": {
+    "s_4571ba7f3e2ea7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c8deed-88b5-4f91-80ec-1e04d866f25c",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
