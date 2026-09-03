@@ -2,6 +2,7 @@ import { Context } from 'probot';
 import semver from 'semver';
 import { cherryPick } from './cherryPick';
 import type { Log } from './logger';
+import { errorIdLine } from './reportError';
 
 export const handleRebase = async ({
 	context,
@@ -74,6 +75,7 @@ git cherry-pick ${backportPR.data.merge_commit_sha}
 git push
 \`\`\`
 
+${errorIdLine(context)}
 `,
 		});
 

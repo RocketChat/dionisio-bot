@@ -3,6 +3,7 @@ import semver from 'semver';
 import { upsertProject } from './upsertProject';
 import { ErrorCherryPickConflict } from './errors/ErrorCherryPickConflict';
 import type { Log } from './logger';
+import { reportError } from './reportError';
 
 export const handleBackport = async ({
 	context,
@@ -112,7 +113,7 @@ export const handleBackport = async ({
 						});
 						return;
 					}
-					tagLog.error({ err }, 'backport failed');
+					await reportError(context, tagLog, err, { action: `/backport ${tag}` });
 				}
 			}),
 		);

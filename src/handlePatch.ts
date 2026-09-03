@@ -3,6 +3,7 @@ import semver from 'semver';
 import { upsertProject } from './upsertProject';
 import { ErrorCherryPickConflict } from './errors/ErrorCherryPickConflict';
 import type { Log } from './logger';
+import { reportError } from './reportError';
 
 export const handlePatch = async ({
 	context,
@@ -74,6 +75,6 @@ after that just run \`/patch\` again
 			});
 			return;
 		}
-		log.error({ err, release: pathRelease }, 'patch failed');
+		await reportError(context, log, err, { action: '/patch', extra: { release: pathRelease } });
 	}
 };

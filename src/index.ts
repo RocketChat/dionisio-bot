@@ -9,6 +9,7 @@ import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQ
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
+import { errorIdLine, extractErrorMessage, reportError } from './reportError';
 
 export = (app: Probot) => {
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
@@ -42,12 +43,8 @@ export = (app: Probot) => {
 			),
 		);
 
-		try {
-			const { owner, repo } = context.repo();
-			await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref, log);
-		} catch (error) {
-			log.error({ err: error }, 'QA check run failed');
-		}
+		const { owner, repo } = context.repo();
+		await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref, context.id, log);
 	});
 
 	app.on(
@@ -79,13 +76,9 @@ export = (app: Probot) => {
 				),
 			);
 
-			try {
-				const { owner, repo } = context.repo();
-				const { head } = context.payload.pull_request;
-				await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, log);
-			} catch (error) {
-				log.error({ err: error }, 'QA check run failed');
-			}
+			const { owner, repo } = context.repo();
+			const { head } = context.payload.pull_request;
+			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log);
 		},
 	);
 
@@ -167,7 +160,7 @@ export = (app: Probot) => {
 					comment_id: comment.id,
 					content: '-1',
 				});
-				log.error({ err: e }, 'jira command failed');
+				await reportError(context, log, e, { action: '/jira', extra: { boardName: rawArg } });
 			} finally {
 				await context.octokit.reactions.deleteForIssueComment({
 					...context.issue(),
@@ -223,7 +216,7 @@ export = (app: Probot) => {
 
 				return result;
 			} catch (e) {
-				log.error({ err: e }, 'patch command failed');
+				await reportError(context, log, e, { action: '/patch' });
 				await context.octokit.reactions.createForIssueComment({
 					...context.issue(),
 					comment_id: comment.id,
@@ -263,7 +256,7 @@ export = (app: Probot) => {
 					comment_id: comment.id,
 					content: '-1',
 				});
-				log.error({ err: e }, 'backport command failed');
+				await reportError(context, log, e, { action: '/backport', extra: { tags } });
 			}
 			return;
 		}
@@ -279,24 +272,25 @@ export = (app: Probot) => {
 				});
 
 				log.debug({ backportNumber, release }, 'rebase requested');
-				await handleRebase({
-					context,
-					backportNumber: parseInt(backportNumber),
-					release,
-					log,
-				});
+				try {
+					await handleRebase({
+						context,
+						backportNumber: parseInt(backportNumber),
+						release,
+						log,
+					});
+				} catch (e) {
+					// handleRebase already commented with the conflict details and the error id
+					await context.octokit.reactions.createForIssueComment({
+						...context.issue(),
+						comment_id: comment.id,
+						content: '-1',
+					});
+					log.error({ err: e, backportNumber, release }, '/rebase failed');
+				}
 			}
 		}
 	});
-
-	function extractErrorMessage(error: unknown): string {
-		const e = error as { status?: number; message?: string; errors?: { message?: string }[] };
-		const parts: string[] = [];
-		if (e.status) parts.push(`status=${e.status}`);
-		if (e.message) parts.push(e.message);
-		if (e.errors?.length) parts.push(e.errors.map((x) => x.message ?? JSON.stringify(x)).join('; '));
-		return parts.join(' — ') || 'Unknown error';
-	}
 
 	async function mergePrWithSquash(
 		octokit: Context['octokit'],
@@ -427,9 +421,43 @@ export = (app: Probot) => {
 		repo: string,
 		headSha: string,
 		headBranch: string,
+		delivery: string,
 		log: Log,
 	): Promise<void> {
 		const startTime = new Date();
+		try {
+			await runQACheckRun(octokit, owner, repo, headSha, headBranch, startTime, log);
+		} catch (error) {
+			log.error({ err: error, headSha }, 'QA check run failed');
+			// the check run is the user-facing surface here; quote the delivery id so the failure can be traced
+			try {
+				await upsertCheckRun(
+					octokit,
+					{ owner, repo },
+					headSha,
+					startTime,
+					'neutral',
+					{
+						title: 'Dionisio QA failed to run',
+						summary: `Dionisio QA hit an unexpected error: ${extractErrorMessage(error)}\n\n${errorIdLine({ id: delivery })}`,
+					},
+					log,
+				);
+			} catch (checkRunError) {
+				log.warn({ err: checkRunError, headSha }, 'could not report the failure on the check run');
+			}
+		}
+	}
+
+	async function runQACheckRun(
+		octokit: Context['octokit'],
+		owner: string,
+		repo: string,
+		headSha: string,
+		headBranch: string,
+		startTime: Date,
+		log: Log,
+	): Promise<void> {
 		const repoParams = { owner, repo };
 
 		let prNumber: number | null = null;
@@ -584,7 +612,7 @@ export = (app: Probot) => {
 		const log = eventLogger(context);
 		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
 		const { owner, repo } = context.repo();
-		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch ?? headSha, log);
+		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch ?? headSha, context.id, log);
 	}
 
 	app.on(['check_suite.requested'], async function check(context) {
