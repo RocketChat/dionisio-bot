@@ -172,5 +172,5 @@ const triggerWorkflow = async (context: Context, base = 'master') =>
 			'base-ref': base,
 		},
 		ref: 'refs/heads/develop',
-		workflow_id: 'new-release.yml',
+		workflow_id: 'release.yml',
 	});
