@@ -2,6 +2,7 @@ import { Context } from 'probot';
 import { runQAChecks } from './qaChecks';
 import { handleMessage } from './handleMessage';
 import { isExternalContributor } from './isExternalContributor';
+import type { Log } from './logger';
 
 const { GITHUB_LOGIN = 'dionisio-bot[bot]', COMMUNITY_LABEL_EXCLUDED_EXTRA = '' } = process.env;
 
@@ -36,17 +37,15 @@ export const applyLabels = async (
 		| 'issues.milestoned'
 		| 'issues.demilestoned'
 	>,
+	log: Log,
 ) => {
 	try {
 		if (context.payload.sender?.login === GITHUB_LOGIN) {
-			console.log('ignoring event triggered by bot', {
-				sender: context.payload.sender?.login,
-				prNumber: pullRequest.number,
-			});
+			log.debug('ignoring event triggered by the bot itself');
 			return;
 		}
 
-		const result = await runQAChecks(pullRequest, owner, repo, ref, context.octokit);
+		const result = await runQAChecks(pullRequest, owner, repo, ref, context.octokit, log);
 
 		if (!result) {
 			return;
@@ -56,7 +55,7 @@ export const applyLabels = async (
 		let newLabels = result.newLabels;
 		const authorLogin = pullRequest.user?.login;
 		if (authorLogin && !COMMUNITY_LABEL_EXCLUDED_AUTHORS.includes(authorLogin)) {
-			const external = await isExternalContributor(context.octokit, authorLogin);
+			const external = await isExternalContributor(context.octokit, authorLogin, log);
 			if (external && !newLabels.includes('community')) {
 				newLabels = [...newLabels, 'community'];
 			}
@@ -80,17 +79,8 @@ export const applyLabels = async (
 		const botComment = comments.data.find((comment) => comment.user?.login === GITHUB_LOGIN);
 		const ignoreUpdate = botComment && botComment.body === message;
 
-		console.log('changing labels ->', {
-			sender: context.payload.sender?.login,
-			prNumber: pullRequest.number,
-			ignoreUpdate,
-			originalLabels,
-			newLabels,
-			addedLabels,
-			removedLabels,
-		});
-
 		if (ignoreUpdate) {
+			log.debug('QA comment and labels unchanged');
 			return;
 		}
 
@@ -111,7 +101,13 @@ export const applyLabels = async (
 			...context.issue(),
 			labels: newLabels,
 		});
+
+		if (addedLabels.length > 0 || removedLabels.length > 0) {
+			log.info({ addedLabels, removedLabels }, 'QA labels changed');
+		} else {
+			log.debug('QA comment updated, labels unchanged');
+		}
 	} catch (error) {
-		console.log(error);
+		log.error({ err: error }, 'applying QA labels failed');
 	}
 };

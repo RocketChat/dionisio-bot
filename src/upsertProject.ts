@@ -1,12 +1,13 @@
 // import { cherryPickCommits } from "github-cherry-pick";
 import { Context } from 'probot';
 import { addPrToProject } from './addPrToProject';
-import { consoleProps, createPullRequest } from './createPullRequest';
+import { createPullRequest } from './createPullRequest';
+import type { Log } from './logger';
 
-const getProject = async (context: Context, release: string) => {
+const getProject = async (context: Context, release: string, log: Log) => {
 	const project = await getProjectsV2(context, release);
 	if (project) {
-		console.log('project found ', project);
+		log.debug({ projectId: project.id, title: project.title }, 'project found');
 		return project;
 	}
 
@@ -16,11 +17,12 @@ const getProject = async (context: Context, release: string) => {
 		'MDEyOk9yZ2FuaXphdGlvbjEyNTA4Nzg4', // ?? context.repo().owner,
 	);
 
-	console.log('project created', projectCreated);
-	return projectCreated.createProjectV2.projectV2;
+	const created = projectCreated.createProjectV2.projectV2;
+	log.info({ projectId: created.id, title: created.title }, 'project created');
+	return created;
 };
 
-const getReleaseBranchSha = async (context: Context, release: string, base: string, workflowTarget?: string) => {
+const getReleaseBranchSha = async (context: Context, release: string, base: string, log: Log, workflowTarget?: string) => {
 	const branch = await context.octokit.git
 		.getRef({
 			...context.repo(),
@@ -37,17 +39,18 @@ const getReleaseBranchSha = async (context: Context, release: string, base: stri
 		ref: base,
 	});
 
+	const ref = `refs/heads/release-${release}`;
 	const branchCreated = (
-		await context.octokit.git.createRef(
-			consoleProps('Creating ref', {
-				...context.repo(),
-				ref: `refs/heads/release-${release}`,
-				sha: commitBase.data.sha,
-			}),
-		)
+		await context.octokit.git.createRef({
+			...context.repo(),
+			ref,
+			sha: commitBase.data.sha,
+		})
 	).data.object.sha;
+	log.info({ ref, sha: branchCreated }, 'release branch created');
 
 	await triggerWorkflow(context, workflowTarget ?? base);
+	log.info({ base: workflowTarget ?? base }, 'release workflow dispatched');
 
 	return branchCreated;
 };
@@ -64,28 +67,18 @@ export const upsertProject = async (
 	},
 	base: string,
 	assignee: string,
+	log: Log,
 	workflowTarget?: string,
 ) => {
-	const project = await getProject(context, release);
+	const project = await getProject(context, release, log);
 
 	if (!project) {
 		throw new Error('Something went wrong during getProject');
 	}
 
-	const releaseBranch = await getReleaseBranchSha(context, release, base, workflowTarget);
+	const releaseBranch = await getReleaseBranchSha(context, release, base, log, workflowTarget);
 
-	console.log(
-		'upsertProject',
-		JSON.stringify(
-			{
-				release,
-				pr,
-				base,
-			},
-			null,
-			2,
-		),
-	);
+	log.debug({ release, base, pr: { number: pr.number, sha: pr.sha } }, 'upserting project');
 
 	/**
 	 * Creates the patch branch
@@ -94,16 +87,17 @@ export const upsertProject = async (
 	 */
 
 	if (pr.sha !== null) {
-		const pullRequest = await createPullRequest(context, release, { ...pr, sha: pr.sha }, releaseBranch, base, assignee);
+		const pullRequest = await createPullRequest(context, release, { ...pr, sha: pr.sha }, releaseBranch, base, assignee, log);
 
-		await addPrToProject(context, pr.id, project.id);
+		await addPrToProject(context, pr.id, project.id, log);
 
-		await addPrToProject(context, pullRequest.data.node_id, project.id);
+		await addPrToProject(context, pullRequest.data.node_id, project.id, log);
 
 		await context.octokit.issues.createComment({
 			...context.issue(),
 			body: `Pull request #${pullRequest.data.number} added to Project: "${project.title}"`,
 		});
+		log.info({ backportPr: pullRequest.data.number, project: project.title }, 'pull requests added to project');
 	}
 };
 

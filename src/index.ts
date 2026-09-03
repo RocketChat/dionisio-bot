@@ -3,19 +3,17 @@ import { applyLabels } from './handleQALabels';
 import { handlePatch } from './handlePatch';
 import { handleBackport } from './handleBackport';
 import { run } from './Queue';
-import { consoleProps } from './createPullRequest';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
 import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
+import { eventLogger, type Log } from './logger';
+import { errorIdLine, reportError } from './reportError';
 
 export = (app: Probot) => {
-	app.log.useLevelLabels = false;
-
-	app.log.level = 'silent';
-
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
+		const log = eventLogger(context);
 		const { issue } = context.payload;
 
 		if (!issue.pull_request) {
@@ -41,20 +39,19 @@ export = (app: Probot) => {
 				pr.data.head.repo?.name ?? pr.data.base.repo.name,
 				pr.data.base.ref,
 				context,
+				log,
 			),
 		);
 
-		try {
-			const { owner, repo } = context.repo();
-			await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref);
-		} catch (error) {
-			console.log(error);
-		}
+		const { owner, repo } = context.repo();
+		await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref, context.id, log);
 	});
 
 	app.on(
 		['pull_request.opened', 'pull_request.synchronize', 'pull_request.edited', 'pull_request.labeled', 'pull_request.unlabeled'],
 		async (context): Promise<void> => {
+			const log = eventLogger(context);
+
 			if (context.payload.pull_request.closed_at) {
 				return;
 			}
@@ -64,8 +61,6 @@ export = (app: Probot) => {
 			if (!ctxRepo || !ctxRepo.owner || !ctxRepo.name) {
 				return;
 			}
-
-			console.log(JSON.stringify(context.payload, null, 2));
 
 			await run(String(context.payload.pull_request.number), () =>
 				applyLabels(
@@ -77,27 +72,29 @@ export = (app: Probot) => {
 					ctxRepo.name,
 					context.payload.pull_request.head.ref,
 					context,
+					log,
 				),
 			);
 
-			try {
-				const { owner, repo } = context.repo();
-				const { head } = context.payload.pull_request;
-				await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref);
-			} catch (error) {
-				console.log(error);
-			}
+			const { owner, repo } = context.repo();
+			const { head } = context.payload.pull_request;
+			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log);
 		},
 	);
 
 	app.on(['issue_comment.created'], async (context): Promise<void> => {
+		const log = eventLogger(context);
 		const { comment, issue } = context.payload;
 		const matcher = /^\/([\w]+)\b *(.*)?$/m;
 
 		const [, command, args] = comment.body.match(matcher) || [];
 
-		if (await isExternalContributor(context.octokit, comment.user.login)) {
+		if (await isExternalContributor(context.octokit, comment.user.login, log)) {
 			return;
+		}
+
+		if (command) {
+			log.info({ command, args }, 'slash command received');
 		}
 
 		if (command === 'bark' || command === 'howl') {
@@ -128,7 +125,7 @@ export = (app: Probot) => {
 			const rawArg = args.trim().replace(/^["']|["']$/g, '');
 			const asSubtask = isJiraTaskKey(rawArg);
 
-			await context.octokit.reactions.createForIssueComment({
+			const reaction = await context.octokit.reactions.createForIssueComment({
 				...context.issue(),
 				comment_id: comment.id,
 				content: 'eyes',
@@ -163,12 +160,13 @@ export = (app: Probot) => {
 					comment_id: comment.id,
 					content: '-1',
 				});
-				console.log('handleJira->', e);
+				await reportError(context, log, e, { action: '/jira', extra: { boardName: rawArg } });
 			} finally {
 				await context.octokit.reactions.deleteForIssueComment({
 					...context.issue(),
 					comment_id: comment.id,
 					content: 'eyes',
+					reaction_id: reaction.data.id,
 				});
 			}
 		}
@@ -194,13 +192,13 @@ export = (app: Probot) => {
 		 */
 
 		if (command === 'patch' && !args?.trim()) {
-			try {
-				await context.octokit.reactions.createForIssueComment({
-					...context.issue(),
-					comment_id: comment.id,
-					content: 'eyes',
-				});
+			const reaction = await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: 'eyes',
+			});
 
+			try {
 				const result = await handlePatch({
 					context,
 					pr: {
@@ -208,6 +206,7 @@ export = (app: Probot) => {
 						author: pr.data.user?.login,
 					},
 					assignee: comment.user.login,
+					log,
 				});
 
 				await context.octokit.reactions.createForIssueComment({
@@ -218,7 +217,7 @@ export = (app: Probot) => {
 
 				return result;
 			} catch (e) {
-				console.error('handlePatch->', e);
+				await reportError(context, log, e, { action: '/patch' });
 				await context.octokit.reactions.createForIssueComment({
 					...context.issue(),
 					comment_id: comment.id,
@@ -229,6 +228,7 @@ export = (app: Probot) => {
 					...context.issue(),
 					comment_id: comment.id,
 					content: 'eyes',
+					reaction_id: reaction.data.id,
 				});
 			}
 		}
@@ -243,13 +243,13 @@ export = (app: Probot) => {
 					content: '+1',
 				});
 
+				log.debug({ tags }, 'backport requested');
 				await handleBackport({
 					context,
-					...consoleProps('handleBackport', {
-						pr: { ...pr.data, author: pr.data.user?.login },
-						tags,
-						assignee: comment.user.login,
-					}),
+					pr: { ...pr.data, author: pr.data.user?.login },
+					tags,
+					assignee: comment.user.login,
+					log,
 				});
 			} catch (e) {
 				// add a reaction to the comment
@@ -258,7 +258,7 @@ export = (app: Probot) => {
 					comment_id: comment.id,
 					content: '-1',
 				});
-				console.log('handleBackport->', e);
+				await reportError(context, log, e, { action: '/backport', extra: { tags } });
 			}
 			return;
 		}
@@ -273,13 +273,23 @@ export = (app: Probot) => {
 					content: '+1',
 				});
 
-				await handleRebase(
-					consoleProps('handleRebase ->>', {
+				log.debug({ backportNumber, release }, 'rebase requested');
+				try {
+					await handleRebase({
 						context,
 						backportNumber: parseInt(backportNumber),
 						release,
-					}),
-				);
+						log,
+					});
+				} catch (e) {
+					// handleRebase already commented with the conflict details and the error id
+					await context.octokit.reactions.createForIssueComment({
+						...context.issue(),
+						comment_id: comment.id,
+						content: '-1',
+					});
+					log.error({ err: e, backportNumber, release }, '/rebase failed');
+				}
 			}
 		}
 	});
@@ -293,17 +303,23 @@ export = (app: Probot) => {
 		return parts.join(' — ') || 'Unknown error';
 	}
 
-	async function mergePrWithSquash(octokit: Context['octokit'], owner: string, repo: string, pullNumber: number): Promise<string | null> {
+	async function mergePrWithSquash(
+		octokit: Context['octokit'],
+		owner: string,
+		repo: string,
+		pullNumber: number,
+		log: Log,
+	): Promise<string | null> {
 		try {
 			await octokit.pulls.merge({ owner, repo, pull_number: pullNumber, merge_method: 'squash' });
 			return null;
 		} catch (error: unknown) {
-			console.log('mergePrWithSquash failed:', error);
+			log.warn({ err: error }, 'squash merge failed');
 			return extractErrorMessage(error);
 		}
 	}
 
-	async function enableMergeWhenReady(octokit: Context['octokit'], pullRequestNodeId: string): Promise<string | null> {
+	async function enableMergeWhenReady(octokit: Context['octokit'], pullRequestNodeId: string, log: Log): Promise<string | null> {
 		try {
 			await octokit.graphql(
 				`mutation EnablePullRequestAutoMerge($input: EnablePullRequestAutoMergeInput!) {
@@ -315,12 +331,12 @@ export = (app: Probot) => {
 			);
 			return null;
 		} catch (error: unknown) {
-			console.log('enablePullRequestAutoMerge failed:', error);
+			log.warn({ err: error }, 'enabling auto-merge failed');
 			return extractErrorMessage(error);
 		}
 	}
 
-	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string): Promise<string | null> {
+	async function enqueuePrInMergeQueue(octokit: Context['octokit'], pullRequestNodeId: string, log: Log): Promise<string | null> {
 		try {
 			await octokit.graphql(
 				`mutation EnqueuePullRequest($input: EnqueuePullRequestInput!) {
@@ -332,32 +348,43 @@ export = (app: Probot) => {
 			);
 			return null;
 		} catch (error: unknown) {
-			console.log('enqueuePullRequest failed:', error);
+			log.warn({ err: error }, 'enqueueing in merge queue failed');
 			return extractErrorMessage(error);
 		}
 	}
 
-	async function tryMergePr(octokit: Context['octokit'], nodeId: string, owner: string, repo: string, pullNumber: number): Promise<string> {
+	async function tryMergePr(
+		octokit: Context['octokit'],
+		nodeId: string,
+		owner: string,
+		repo: string,
+		pullNumber: number,
+		log: Log,
+	): Promise<string> {
 		const lines: string[] = [];
 
-		const enqueueErr = await enqueuePrInMergeQueue(octokit, nodeId);
+		const enqueueErr = await enqueuePrInMergeQueue(octokit, nodeId, log);
 		if (enqueueErr === null) {
+			log.info({ strategy: 'merge-queue' }, 'pull request merge triggered');
 			return '🚀 Enqueued in merge queue';
 		}
 		lines.push(`❌ Enqueue: ${enqueueErr}`);
 
-		const autoMergeErr = await enableMergeWhenReady(octokit, nodeId);
+		const autoMergeErr = await enableMergeWhenReady(octokit, nodeId, log);
 		if (autoMergeErr === null) {
+			log.info({ strategy: 'auto-merge' }, 'pull request merge triggered');
 			return '🔄 Auto-merge enabled (merge when ready)';
 		}
 		lines.push(`❌ Auto-merge: ${autoMergeErr}`);
 
-		const squashErr = await mergePrWithSquash(octokit, owner, repo, pullNumber);
+		const squashErr = await mergePrWithSquash(octokit, owner, repo, pullNumber, log);
 		if (squashErr === null) {
+			log.info({ strategy: 'squash' }, 'pull request merge triggered');
 			return '✅ Squash-merged directly';
 		}
 		lines.push(`❌ Squash merge: ${squashErr}`);
 
+		log.error('all merge strategies failed');
 		return `⚠️ All merge strategies failed\n${lines.join('\n')}`;
 	}
 
@@ -368,6 +395,7 @@ export = (app: Probot) => {
 		startTime: Date,
 		conclusion: 'success' | 'failure' | 'neutral',
 		output: { title: string; summary: string },
+		log: Log,
 	): Promise<number> {
 		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
 		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
@@ -380,6 +408,7 @@ export = (app: Probot) => {
 				output,
 				completed_at: new Date().toISOString(),
 			});
+			log.info({ checkRunId: updated.data.id, headSha, conclusion, title: output.title }, 'check run updated');
 			return updated.data.id;
 		}
 
@@ -393,6 +422,7 @@ export = (app: Probot) => {
 			conclusion,
 			output,
 		});
+		log.info({ checkRunId: created.data.id, headSha, conclusion, title: output.title }, 'check run created');
 		return created.data.id;
 	}
 
@@ -402,8 +432,43 @@ export = (app: Probot) => {
 		repo: string,
 		headSha: string,
 		headBranch: string,
+		delivery: string,
+		log: Log,
 	): Promise<void> {
 		const startTime = new Date();
+		try {
+			await runQACheckRun(octokit, owner, repo, headSha, headBranch, startTime, log);
+		} catch (error) {
+			log.error({ err: error, headSha }, 'QA check run failed');
+			// the check run is the user-facing surface here; quote the delivery id so the failure can be traced
+			try {
+				await upsertCheckRun(
+					octokit,
+					{ owner, repo },
+					headSha,
+					startTime,
+					'neutral',
+					{
+						title: 'Dionisio QA failed to run',
+						summary: `Dionisio QA could not run because of an unexpected error.\n\n${errorIdLine({ id: delivery })}`,
+					},
+					log,
+				);
+			} catch (checkRunError) {
+				log.warn({ err: checkRunError, headSha }, 'could not report the failure on the check run');
+			}
+		}
+	}
+
+	async function runQACheckRun(
+		octokit: Context['octokit'],
+		owner: string,
+		repo: string,
+		headSha: string,
+		headBranch: string,
+		startTime: Date,
+		log: Log,
+	): Promise<void> {
 		const repoParams = { owner, repo };
 
 		let prNumber: number | null = null;
@@ -435,8 +500,8 @@ export = (app: Probot) => {
 					baseOwner = openPr.base.repo.owner?.login ?? owner;
 					baseRepo = openPr.base.repo.name ?? repo;
 				}
-			} catch {
-				// commit may be in a fork (not in this repo)
+			} catch (error) {
+				log.debug({ err: error, headSha }, 'commit not found in base repo, probably from a fork');
 			}
 		}
 
@@ -458,10 +523,18 @@ export = (app: Probot) => {
 		}
 
 		if (prNumber === null) {
-			await upsertCheckRun(octokit, repoParams, headSha, startTime, 'neutral', {
-				title: 'No open PR',
-				summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
-			});
+			await upsertCheckRun(
+				octokit,
+				repoParams,
+				headSha,
+				startTime,
+				'neutral',
+				{
+					title: 'No open PR',
+					summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
+				},
+				log,
+			);
 			return;
 		}
 
@@ -487,9 +560,10 @@ export = (app: Probot) => {
 						sha: fullPr.data.head.sha,
 					},
 				},
+				log,
 			});
 		} catch (error) {
-			console.log('enforceChangesetMilestone->', error);
+			log.error({ err: error, prNumber }, 'changeset milestone enforcement failed');
 		}
 
 		const prForQA: PullRequestForQA = {
@@ -502,13 +576,21 @@ export = (app: Probot) => {
 			title: fullPr.data.title,
 		};
 
-		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit);
+		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit, log);
 
 		if (!result) {
-			await upsertCheckRun(octokit, repoParams, headSha, startTime, 'neutral', {
-				title: 'Could not run checks',
-				summary: 'Dionisio QA could not run (e.g. missing package.json on base ref).',
-			});
+			await upsertCheckRun(
+				octokit,
+				repoParams,
+				headSha,
+				startTime,
+				'neutral',
+				{
+					title: 'Could not run checks',
+					summary: 'Dionisio QA could not run (e.g. missing package.json on base ref).',
+				},
+				log,
+			);
 			return;
 		}
 
@@ -523,16 +605,25 @@ export = (app: Probot) => {
 			conclusion = result.readyToMerge ? 'success' : 'failure';
 		}
 
-		await upsertCheckRun(octokit, repoParams, headSha, startTime, conclusion, {
-			title: finalTitle,
-			summary,
-		});
+		await upsertCheckRun(
+			octokit,
+			repoParams,
+			headSha,
+			startTime,
+			conclusion,
+			{
+				title: finalTitle,
+				summary,
+			},
+			log,
+		);
 	}
 
 	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
+		const log = eventLogger(context);
 		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
 		const { owner, repo } = context.repo();
-		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch ?? headSha);
+		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch ?? headSha, context.id, log);
 	}
 
 	app.on(['check_suite.requested'], async function check(context) {
@@ -547,6 +638,8 @@ export = (app: Probot) => {
 		if (context.payload.check_suite.conclusion !== 'success') {
 			return;
 		}
+
+		const log = eventLogger(context);
 
 		const { head_sha: headSha, head_branch: headBranch } = context.payload.check_suite;
 		const { owner, repo } = context.repo();
@@ -593,6 +686,7 @@ export = (app: Probot) => {
 		}
 
 		if (prNumber === null) {
+			log.warn({ headSha, headBranch }, 'QA check succeeded but no open pull request was found to merge');
 			return;
 		}
 
@@ -607,7 +701,7 @@ export = (app: Probot) => {
 		}
 
 		try {
-			const mergeResult = await tryMergePr(context.octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number);
+			const mergeResult = await tryMergePr(context.octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number, log);
 			const existingTitle = dionisioRun.output?.title ?? 'Dionisio QA';
 			const existingSummary = dionisioRun.output?.summary ?? '';
 			await context.octokit.checks.update({
@@ -617,7 +711,7 @@ export = (app: Probot) => {
 				output: { title: existingTitle, summary: `${existingSummary}\n\n### Merge\n${mergeResult}` },
 			});
 		} catch (error) {
-			console.log('check_suite.completed merge error:', error);
+			log.error({ err: error, prNumber }, 'merge after QA success failed');
 		}
 	});
 

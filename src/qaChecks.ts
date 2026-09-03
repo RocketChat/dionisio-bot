@@ -1,4 +1,5 @@
 import type { Context } from 'probot';
+import type { Log } from './logger';
 
 export interface QAStep {
 	name: string;
@@ -65,6 +66,7 @@ export const runQAChecks = async (
 	repo: string,
 	ref: string,
 	octokit: Context['octokit'],
+	log: Log,
 ): Promise<QAChecksResult | null> => {
 	try {
 		const hasConflicts = pullRequest.mergeable_state === 'dirty';
@@ -82,6 +84,7 @@ export const runQAChecks = async (
 		});
 
 		if (typeof data !== 'string') {
+			log.warn({ owner, repo, ref }, 'package.json on the base ref is not a file, skipping QA checks');
 			return null;
 		}
 
@@ -171,7 +174,8 @@ export const runQAChecks = async (
 			currentLabels,
 			newLabels,
 		};
-	} catch {
+	} catch (error) {
+		log.error({ err: error, prNumber: pullRequest.number, ref }, 'QA checks failed to run');
 		return null;
 	}
 };
