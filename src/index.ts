@@ -125,7 +125,7 @@ export = (app: Probot) => {
 			const rawArg = args.trim().replace(/^["']|["']$/g, '');
 			const asSubtask = isJiraTaskKey(rawArg);
 
-			await context.octokit.reactions.createForIssueComment({
+			const reaction = await context.octokit.reactions.createForIssueComment({
 				...context.issue(),
 				comment_id: comment.id,
 				content: 'eyes',
@@ -166,6 +166,7 @@ export = (app: Probot) => {
 					...context.issue(),
 					comment_id: comment.id,
 					content: 'eyes',
+					reaction_id: reaction.data.id,
 				});
 			}
 		}
@@ -191,13 +192,13 @@ export = (app: Probot) => {
 		 */
 
 		if (command === 'patch' && !args?.trim()) {
-			try {
-				await context.octokit.reactions.createForIssueComment({
-					...context.issue(),
-					comment_id: comment.id,
-					content: 'eyes',
-				});
+			const reaction = await context.octokit.reactions.createForIssueComment({
+				...context.issue(),
+				comment_id: comment.id,
+				content: 'eyes',
+			});
 
+			try {
 				const result = await handlePatch({
 					context,
 					pr: {
@@ -227,6 +228,7 @@ export = (app: Probot) => {
 					...context.issue(),
 					comment_id: comment.id,
 					content: 'eyes',
+					reaction_id: reaction.data.id,
 				});
 			}
 		}
