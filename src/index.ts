@@ -194,21 +194,43 @@ export = (app: Probot) => {
 		 */
 
 		if (command === 'patch' && !args?.trim()) {
-			// add a reaction to the comment
-			await context.octokit.reactions.createForIssueComment({
-				...context.issue(),
-				comment_id: comment.id,
-				content: '+1',
-			});
+			try {
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: 'eyes',
+				});
 
-			return handlePatch({
-				context,
-				pr: {
-					...pr.data,
-					author: pr.data.user?.login,
-				},
-				assignee: comment.user.login,
-			});
+				const result = await handlePatch({
+					context,
+					pr: {
+						...pr.data,
+						author: pr.data.user?.login,
+					},
+					assignee: comment.user.login,
+				});
+
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '+1',
+				});
+
+				return result;
+			} catch (e) {
+				console.error('handlePatch->', e);
+				await context.octokit.reactions.createForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: '-1',
+				});
+			} finally {
+				await context.octokit.reactions.deleteForIssueComment({
+					...context.issue(),
+					comment_id: comment.id,
+					content: 'eyes',
+				});
+			}
 		}
 		if (command === 'backport' && args?.trim()) {
 			const tags = args.split(' ').filter((arg) => /\d+\.\d+\.\d+/.test(arg));
