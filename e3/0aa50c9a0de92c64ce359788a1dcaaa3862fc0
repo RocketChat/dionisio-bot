@@ -1,0 +1,43 @@
+src/index.ts
+  s_4571ba7f3e2ea7::t_163311fef12a30 324,329
+  s_4571ba7f3e2ea7::t_d790a46535f794 277-282
+  s_4571ba7f3e2ea7::t_2b793d582a998f 11,15
+  s_4571ba7f3e2ea7::t_995b55eca4374a 101-104
+  s_4571ba7f3e2ea7::t_7049e400b1d88a 341,346-353,356,358,363,365,370,372,377,388,401,415,425
+  s_4571ba7f3e2ea7::t_cfa0351921f77c 644
+  s_4571ba7f3e2ea7::t_d6779c4b65a7ab 563-574,578,581,597
+  s_4571ba7f3e2ea7::t_3d2205fbc73085 659
+  s_4571ba7f3e2ea7::t_b810ace1c7b42c 46,48,55-56
+  s_4571ba7f3e2ea7::t_2d720739a992a1 248,251-253,262
+  s_4571ba7f3e2ea7::t_4248bf15c04f85 83,85,91
+  s_4571ba7f3e2ea7::t_8092e2126ab401 223
+  s_4571ba7f3e2ea7::t_ee99c0cd8a6def 459-460
+  s_4571ba7f3e2ea7::t_0bc66d8e5ba631 296-302,307,312
+  s_4571ba7f3e2ea7::t_35fc88f3baf317 168
+  s_4571ba7f3e2ea7::t_ad988cc1d21d82 521
+  s_4571ba7f3e2ea7::t_d4c8f72762a28f 537-548
+  s_4571ba7f3e2ea7::t_58df872c5aa29a 482-493
+  s_4571ba7f3e2ea7::t_a1c42776d723b9 669
+  s_4571ba7f3e2ea7::t_aa6acbe6c4dd24 598
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "e30aa50c9a0de92c64ce359788a1dcaaa3862fc0",
+  "prompts": {},
+  "humans": {
+    "h_4c386397e672f4": {
+      "author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_4571ba7f3e2ea7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c8deed-88b5-4f91-80ec-1e04d866f25c",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
