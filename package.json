@@ -15,7 +15,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "lint": "eslint ./src",
-    "start": "probot run ./lib/index.js",
+    "start": "node ./lib/server.js",
+    "dev": "probot run ./lib/index.js",
     "test": "jest"
   },
   "dependencies": {
