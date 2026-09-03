@@ -1,0 +1,28 @@
+src/server.ts
+  s_4571ba7f3e2ea7::t_142faa6483c9f5 1-43,46-84,89-103
+  s_4571ba7f3e2ea7::t_c6a74e970d36f3 44-45
+  s_4571ba7f3e2ea7::t_0cd62b22f4544f 85-88
+package.json
+  s_4571ba7f3e2ea7::t_0eb39411d34338 18-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "2fe42165027716a00731811e32899bf059e05f79",
+  "prompts": {},
+  "humans": {
+    "h_4c386397e672f4": {
+      "author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_4571ba7f3e2ea7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c8deed-88b5-4f91-80ec-1e04d866f25c",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
