@@ -38,6 +38,7 @@ export = (app: Probot) => {
 				pr.data.head.repo?.name ?? pr.data.base.repo.name,
 				pr.data.base.ref,
 				context,
+				log,
 			),
 		);
 
@@ -74,6 +75,7 @@ export = (app: Probot) => {
 					ctxRepo.name,
 					context.payload.pull_request.head.ref,
 					context,
+					log,
 				),
 			);
 
@@ -94,7 +96,7 @@ export = (app: Probot) => {
 
 		const [, command, args] = comment.body.match(matcher) || [];
 
-		if (await isExternalContributor(context.octokit, comment.user.login)) {
+		if (await isExternalContributor(context.octokit, comment.user.login, log)) {
 			return;
 		}
 
@@ -516,6 +518,7 @@ export = (app: Probot) => {
 						sha: fullPr.data.head.sha,
 					},
 				},
+				log,
 			});
 		} catch (error) {
 			log.error({ err: error, prNumber }, 'changeset milestone enforcement failed');
@@ -531,7 +534,7 @@ export = (app: Probot) => {
 			title: fullPr.data.title,
 		};
 
-		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit);
+		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit, log);
 
 		if (!result) {
 			await upsertCheckRun(

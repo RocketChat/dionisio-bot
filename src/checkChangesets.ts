@@ -1,4 +1,5 @@
 import type { Context } from 'probot';
+import type { Log } from './logger';
 
 const { GITHUB_LOGIN = 'dionisio-bot[bot]' } = process.env;
 
@@ -130,6 +131,7 @@ export const enforceChangesetMilestone = async ({
 	owner,
 	repo,
 	pr,
+	log,
 }: {
 	octokit: Context['octokit'];
 	owner: string;
@@ -140,9 +142,12 @@ export const enforceChangesetMilestone = async ({
 		milestone?: string;
 		head: { owner: string; repo: string; sha: string };
 	};
+	log: Log;
 }): Promise<void> => {
 	const files = await getChangesetFiles(octokit, owner, repo, pr.number, pr.head);
 	const problems = findChangesetProblems(files, pr.milestone, pr.title);
+
+	log.debug({ prNumber: pr.number, changesets: files.map((file) => file.filename), problems }, 'changesets checked');
 
 	const reviews = await octokit.pulls.listReviews({ owner, repo, pull_number: pr.number });
 	const botReview = reviews.data.find((review) => review.user?.login === GITHUB_LOGIN && review.state === 'CHANGES_REQUESTED');
@@ -156,6 +161,7 @@ export const enforceChangesetMilestone = async ({
 				review_id: botReview.id,
 				message: 'Changesets now match the title and milestone',
 			});
+			log.info({ prNumber: pr.number, reviewId: botReview.id }, 'changeset review dismissed');
 		}
 		return;
 	}
@@ -173,6 +179,7 @@ export const enforceChangesetMilestone = async ({
 		event: 'REQUEST_CHANGES',
 		body,
 	});
+	log.info({ prNumber: pr.number, problems }, 'changeset review requested');
 
 	if (botReview) {
 		await octokit.pulls.dismissReview({
