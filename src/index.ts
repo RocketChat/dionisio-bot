@@ -9,7 +9,7 @@ import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQ
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
-import { errorIdLine, extractErrorMessage, reportError } from './reportError';
+import { errorIdLine, reportError } from './reportError';
 
 export = (app: Probot) => {
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
@@ -292,6 +292,15 @@ export = (app: Probot) => {
 		}
 	});
 
+	function extractErrorMessage(error: unknown): string {
+		const e = error as { status?: number; message?: string; errors?: { message?: string }[] };
+		const parts: string[] = [];
+		if (e.status) parts.push(`status=${e.status}`);
+		if (e.message) parts.push(e.message);
+		if (e.errors?.length) parts.push(e.errors.map((x) => x.message ?? JSON.stringify(x)).join('; '));
+		return parts.join(' — ') || 'Unknown error';
+	}
+
 	async function mergePrWithSquash(
 		octokit: Context['octokit'],
 		owner: string,
@@ -439,7 +448,7 @@ export = (app: Probot) => {
 					'neutral',
 					{
 						title: 'Dionisio QA failed to run',
-						summary: `Dionisio QA hit an unexpected error: ${extractErrorMessage(error)}\n\n${errorIdLine({ id: delivery })}`,
+						summary: `Dionisio QA could not run because of an unexpected error.\n\n${errorIdLine({ id: delivery })}`,
 					},
 					log,
 				);
