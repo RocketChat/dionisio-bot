@@ -1,0 +1,15 @@
+src/index.ts
+  h_4c386397e672f4 200-201,204-209,212-230,232
+  h_4c386397e672f4 197-199,202,210-211,231,233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "5efc2eaf238372f3ddce8b62af6780529034d987",
+  "prompts": {},
+  "humans": {
+    "h_4c386397e672f4": {
+      "author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
