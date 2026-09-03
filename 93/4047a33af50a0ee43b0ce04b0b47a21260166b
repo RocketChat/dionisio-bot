@@ -1,0 +1,38 @@
+src/index.ts
+  s_4571ba7f3e2ea7::t_28fb31b08b8b43 79-81
+  s_4571ba7f3e2ea7::t_e8ae429fd02a5a 46-47
+  s_4571ba7f3e2ea7::t_73dbf2a7a5f225 259
+  s_4571ba7f3e2ea7::t_51d989c1dd8ea5 275-290
+  s_4571ba7f3e2ea7::t_7be299a8a92eda 424,428-460
+  s_4571ba7f3e2ea7::t_8a5fd98edd3321 163
+  s_4571ba7f3e2ea7::t_a473831d579a9e 615
+  s_4571ba7f3e2ea7::t_46ebea6c49438b 12
+  s_4571ba7f3e2ea7::t_fafeaa435123d9 219
+src/handleBackport.ts
+  s_4571ba7f3e2ea7::t_534782d857043f 6
+  s_4571ba7f3e2ea7::t_014c6ac3301845 116
+src/handleRebase.ts
+  s_4571ba7f3e2ea7::t_8a18840d8b93e0 78
+  s_4571ba7f3e2ea7::t_6c102dc4aa0b81 5
+src/handlePatch.ts
+  s_4571ba7f3e2ea7::t_4fd9894cd2ab70 78
+  s_4571ba7f3e2ea7::t_f93bf861e3d577 6
+src/reportError.ts
+  s_4571ba7f3e2ea7::t_928db101c2eda2 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "934047a33af50a0ee43b0ce04b0b47a21260166b",
+  "prompts": {},
+  "sessions": {
+    "s_4571ba7f3e2ea7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c8deed-88b5-4f91-80ec-1e04d866f25c",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
