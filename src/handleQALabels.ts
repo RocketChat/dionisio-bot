@@ -6,6 +6,28 @@ import type { Log } from './logger';
 
 const { GITHUB_LOGIN = 'dionisio-bot[bot]', COMMUNITY_LABEL_EXCLUDED_EXTRA = '' } = process.env;
 
+export { GITHUB_LOGIN };
+
+/**
+ * Milestoning a pull request has been delivered as an `issues` event historically and as a
+ * `pull_request` event more recently, and GitHub's documentation does not say which applies.
+ * Both are subscribed so the check refreshes either way; the work is idempotent if both arrive.
+ */
+export type QAMilestoneEvent = 'issues.milestoned' | 'issues.demilestoned';
+
+/** The pull request activity that changes something Dionisio QA reports on. */
+export type QAPullRequestEvent =
+	| 'pull_request.opened'
+	| 'pull_request.synchronize'
+	| 'pull_request.edited'
+	| 'pull_request.labeled'
+	| 'pull_request.unlabeled'
+	| 'pull_request.reopened'
+	| 'pull_request.ready_for_review'
+	| 'pull_request.converted_to_draft'
+	| 'pull_request.milestoned'
+	| 'pull_request.demilestoned';
+
 const COMMUNITY_LABEL_EXCLUDED_AUTHORS = [
 	GITHUB_LOGIN,
 	'github-copilot[bot]',
@@ -65,15 +87,7 @@ export const applyLabels = async (
 	owner: string,
 	repo: string,
 	ref: string,
-	context: Context<
-		| 'pull_request.opened'
-		| 'pull_request.synchronize'
-		| 'pull_request.edited'
-		| 'pull_request.labeled'
-		| 'pull_request.unlabeled'
-		| 'issues.milestoned'
-		| 'issues.demilestoned'
-	>,
+	context: Context<QAPullRequestEvent | QAMilestoneEvent>,
 	log: Log,
 ) => {
 	try {
