@@ -1,5 +1,5 @@
 import { Context } from 'probot';
-import { runQAChecks } from './qaChecks';
+import { runQAChecks, type PullRequestForQA } from './qaChecks';
 import { handleMessage } from './handleMessage';
 import { isExternalContributor } from './isExternalContributor';
 import type { Log } from './logger';
@@ -61,16 +61,7 @@ const reconcileLabels = async (
 };
 
 export const applyLabels = async (
-	pullRequest: {
-		mergeable?: boolean | null;
-		labels: { name: string }[];
-		mergeable_state: string;
-		milestone?: string;
-		url: string;
-		number: number;
-		title: string;
-		user?: { login?: string } | null;
-	},
+	pullRequest: PullRequestForQA & { user?: { login?: string } | null },
 	owner: string,
 	repo: string,
 	ref: string,
@@ -109,14 +100,7 @@ export const applyLabels = async (
 		const addedLabels = newLabels.filter((label) => !originalLabels.includes(label));
 		const removedLabels = originalLabels.filter((label) => !newLabels.includes(label));
 
-		const message = await handleMessage({
-			assured: result.assured,
-			hasConflicts: result.hasConflicts,
-			mergeable: result.mergeable,
-			hasMilestone: result.hasMilestone,
-			hasInvalidTitle: result.hasInvalidTitle,
-			wrongVersion: result.wrongVersion,
-		});
+		const message = handleMessage(result);
 
 		// Comments come back oldest first, and this one is written on pull_request.opened, so it is
 		// at the front. One page is enough; paginating would cost a round trip per 100 comments.
