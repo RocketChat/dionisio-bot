@@ -397,8 +397,10 @@ export = (app: Probot) => {
 		output: { title: string; summary: string },
 		log: Log,
 	): Promise<number> {
-		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha });
-		const existing = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+		// Filtered by name server side. Listing every run and searching locally missed ours once a
+		// SHA carried more than a page of check runs, and we would then create a duplicate.
+		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha, check_name: CHECK_RUN_NAME });
+		const [existing] = runs.data.check_runs;
 
 		if (existing) {
 			const updated = await octokit.checks.update({
@@ -540,10 +542,10 @@ export = (app: Probot) => {
 
 		const [fullPr, reviews] = await Promise.all([
 			octokit.pulls.get({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
-			octokit.pulls.listReviews({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
+			octokit.paginate(octokit.pulls.listReviews, { owner: baseOwner, repo: baseRepo, pull_number: prNumber, per_page: 100 }),
 		]);
 
-		const hasReviews = reviews.data.some((r) => r.user?.type !== 'Bot');
+		const hasReviews = reviews.some((r) => r.user?.type !== 'Bot');
 
 		try {
 			await enforceChangesetMilestone({
@@ -644,8 +646,8 @@ export = (app: Probot) => {
 		const { head_sha: headSha, head_branch: headBranch } = context.payload.check_suite;
 		const { owner, repo } = context.repo();
 
-		const runs = await context.octokit.checks.listForRef({ owner, repo, ref: headSha });
-		const dionisioRun = runs.data.check_runs.find((r) => r.name === CHECK_RUN_NAME);
+		const runs = await context.octokit.checks.listForRef({ owner, repo, ref: headSha, check_name: CHECK_RUN_NAME });
+		const [dionisioRun] = runs.data.check_runs;
 
 		if (!dionisioRun || dionisioRun.conclusion !== 'success') {
 			return;

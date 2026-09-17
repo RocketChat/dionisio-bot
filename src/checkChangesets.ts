@@ -149,8 +149,8 @@ export const enforceChangesetMilestone = async ({
 
 	log.debug({ prNumber: pr.number, changesets: files.map((file) => file.filename), problems }, 'changesets checked');
 
-	const reviews = await octokit.pulls.listReviews({ owner, repo, pull_number: pr.number });
-	const botReview = reviews.data.find((review) => review.user?.login === GITHUB_LOGIN && review.state === 'CHANGES_REQUESTED');
+	const reviews = await octokit.paginate(octokit.pulls.listReviews, { owner, repo, pull_number: pr.number, per_page: 100 });
+	const botReview = reviews.find((review) => review.user?.login === GITHUB_LOGIN && review.state === 'CHANGES_REQUESTED');
 
 	if (problems.length === 0) {
 		if (botReview) {
