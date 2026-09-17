@@ -7,7 +7,7 @@ const mergeable = (overrides: Partial<MergeCandidate> = {}): MergeCandidate => (
 	mergeable: true,
 	mergeableState: 'clean',
 	readyToMerge: true,
-	hasReviews: true,
+	reviewsSatisfied: true,
 	...overrides,
 });
 
@@ -23,7 +23,7 @@ describe('evaluateMergeDecision', () => {
 		['mergeability-unknown', { mergeable: null }],
 		['conflicts', { mergeable: false }],
 		['conflicts', { mergeableState: 'dirty' }],
-		['reviews', { hasReviews: false }],
+		['reviews', { reviewsSatisfied: false }],
 		['qa-not-ready', { readyToMerge: false }],
 	])('refuses with reason %s', (reason, overrides) => {
 		expect(evaluateMergeDecision(mergeable(overrides as Partial<MergeCandidate>))).toEqual({ merge: false, reason });
@@ -31,7 +31,7 @@ describe('evaluateMergeDecision', () => {
 
 	// The state the bot used to merge on: QA passed earlier, conditions changed, nothing re-ran.
 	test('refuses a PR whose review was dismissed after QA passed', () => {
-		expect(evaluateMergeDecision(mergeable({ hasReviews: false, readyToMerge: true }))).toEqual({ merge: false, reason: 'reviews' });
+		expect(evaluateMergeDecision(mergeable({ reviewsSatisfied: false, readyToMerge: true }))).toEqual({ merge: false, reason: 'reviews' });
 	});
 
 	test('refuses when the base branch moved and left conflicts', () => {

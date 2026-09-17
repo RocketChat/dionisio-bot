@@ -22,6 +22,7 @@ import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
 import { errorIdLine, reportError } from './reportError';
 import { resolvePullRequestForHead } from './resolvePullRequest';
+import { summarizeReviews } from './reviews';
 
 /** A pull request the caller already fetched, reused when it is the one we resolved to. */
 interface PrefetchedPullRequest {
@@ -45,7 +46,7 @@ interface QAOutcome {
 		baseRef: string;
 	};
 	result: QAChecksResult;
-	hasReviews: boolean;
+	reviewsSatisfied: boolean;
 	conclusion: 'success' | 'failure' | 'neutral';
 	output: { title: string; summary: string };
 }
@@ -663,7 +664,7 @@ export = (app: Probot) => {
 
 		let fullPr = fetched;
 
-		const hasReviews = reviews.some((r) => r.user?.type !== 'Bot');
+		const reviewSummary = summarizeReviews(reviews);
 
 		try {
 			await enforceChangesetMilestone({
@@ -717,7 +718,7 @@ export = (app: Probot) => {
 			return { kind: 'not-runnable' };
 		}
 
-		const verdict = buildCheckVerdict(result, { hasReviews });
+		const verdict = buildCheckVerdict(result, { reviews: reviewSummary });
 
 		return {
 			kind: 'ok',
@@ -736,7 +737,7 @@ export = (app: Probot) => {
 					baseRef: fullPr.base.ref,
 				},
 				result,
-				hasReviews,
+				reviewsSatisfied: reviewSummary.satisfied,
 				conclusion: verdict.conclusion,
 				output: formatCheckRunOutput(verdict),
 			},
@@ -880,7 +881,7 @@ export = (app: Probot) => {
 			mergeable: outcome.pr.mergeable,
 			mergeableState: outcome.pr.mergeableState,
 			readyToMerge: outcome.result.readyToMerge,
-			hasReviews: outcome.hasReviews,
+			reviewsSatisfied: outcome.reviewsSatisfied,
 		});
 
 		if (!decision.merge) {

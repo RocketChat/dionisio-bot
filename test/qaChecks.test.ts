@@ -32,6 +32,10 @@ const prForQA = (overrides: Partial<PullRequestForQA> = {}): PullRequestForQA =>
 
 const step = (name: string, passed: boolean): QAStep => ({ name, passed });
 
+const approved = { approvals: ['alice'], changesRequested: [], satisfied: true };
+const unreviewed = { approvals: [], changesRequested: [], satisfied: false };
+const blocked = { approvals: ['alice'], changesRequested: ['bob'], satisfied: false };
+
 const result = (overrides: Partial<QAChecksResult> = {}): QAChecksResult => {
 	const steps = overrides.steps ?? [
 		step('Ready for review', true),
@@ -135,7 +139,7 @@ describe('blockedOnlyByMergeability', () => {
 
 describe('buildCheckVerdict', () => {
 	test('a fully passing, reviewed PR succeeds', () => {
-		const verdict = buildCheckVerdict(result(), { hasReviews: true });
+		const verdict = buildCheckVerdict(result(), { reviews: approved });
 
 		expect(verdict.conclusion).toBe('success');
 		expect(verdict.steps.every((s) => s.passed)).toBe(true);
@@ -143,7 +147,7 @@ describe('buildCheckVerdict', () => {
 
 	test('unknown mergeability is neutral, never a silent pass', () => {
 		const steps = result().steps.map((s) => (s.name === 'Mergeable' ? step('Mergeable', false) : s));
-		const verdict = buildCheckVerdict(result({ steps, mergeable: false, mergeabilityUnknown: true }), { hasReviews: true });
+		const verdict = buildCheckVerdict(result({ steps, mergeable: false, mergeabilityUnknown: true }), { reviews: approved });
 
 		expect(verdict.conclusion).toBe('neutral');
 		expect(verdict.title).toBe('Waiting for GitHub to compute mergeability');
@@ -151,14 +155,14 @@ describe('buildCheckVerdict', () => {
 
 	test('a draft is neutral even when everything else passes', () => {
 		const steps = result().steps.map((s) => (s.name === 'Ready for review' ? step('Ready for review', false) : s));
-		const verdict = buildCheckVerdict(result({ steps, isDraft: true }), { hasReviews: true });
+		const verdict = buildCheckVerdict(result({ steps, isDraft: true }), { reviews: approved });
 
 		expect(verdict.conclusion).toBe('neutral');
 		expect(verdict.title).toBe('Draft — not ready for review');
 	});
 
 	test('an unreviewed PR is neutral and says so in the steps', () => {
-		const verdict = buildCheckVerdict(result(), { hasReviews: false });
+		const verdict = buildCheckVerdict(result(), { reviews: unreviewed });
 
 		expect(verdict.conclusion).toBe('neutral');
 		expect(verdict.title).toBe('Waiting for reviews');
@@ -167,9 +171,23 @@ describe('buildCheckVerdict', () => {
 
 	test('a failing step produces failure', () => {
 		const steps = result().steps.map((s) => (s.name === 'QA assured' ? step('QA assured', false) : s));
-		const verdict = buildCheckVerdict(result({ steps }), { hasReviews: true });
+		const verdict = buildCheckVerdict(result({ steps }), { reviews: approved });
 
 		expect(verdict.conclusion).toBe('failure');
+	});
+
+	// "Changes requested" must never be printed over an all-green step list — that is the same
+	// contradiction the conclusion line used to produce, arriving through the review gate.
+	test('changes requested fails and names who is blocking, in the steps', () => {
+		const verdict = buildCheckVerdict(result(), { reviews: blocked });
+
+		expect(verdict.conclusion).toBe('failure');
+		expect(verdict.title).toBe('Changes requested');
+
+		const reviewed = verdict.steps.find((s) => s.name === 'Reviewed');
+		expect(reviewed?.passed).toBe(false);
+		expect(reviewed?.message).toContain('bob');
+		expect(verdict.steps.every((s) => s.passed)).toBe(false);
 	});
 
 	// This is the regression that produced "Conclusion: failure" under six green steps.
@@ -177,7 +195,7 @@ describe('buildCheckVerdict', () => {
 		const names = ['Ready for review', 'No merge conflicts', 'QA assured', 'Mergeable', 'Has milestone or project'];
 
 		for (const failing of [null, ...names]) {
-			for (const hasReviews of [true, false]) {
+			for (const reviews of [approved, unreviewed, blocked]) {
 				const steps = result().steps.map((s) => (s.name === failing ? step(s.name, false) : s));
 				const verdict = buildCheckVerdict(
 					result({
@@ -185,7 +203,7 @@ describe('buildCheckVerdict', () => {
 						isDraft: failing === 'Ready for review',
 						mergeabilityUnknown: failing === 'Mergeable',
 					}),
-					{ hasReviews },
+					{ reviews },
 				);
 
 				expect(verdict.conclusion === 'success').toBe(verdict.steps.every((s) => s.passed));
@@ -196,7 +214,7 @@ describe('buildCheckVerdict', () => {
 
 describe('formatCheckRunOutput', () => {
 	test('the summary reports the emitted conclusion, not a recomputed one', () => {
-		const verdict = buildCheckVerdict(result(), { hasReviews: false });
+		const verdict = buildCheckVerdict(result(), { reviews: unreviewed });
 		const { title, summary } = formatCheckRunOutput(verdict);
 
 		expect(verdict.conclusion).toBe('neutral');
@@ -207,7 +225,7 @@ describe('formatCheckRunOutput', () => {
 
 	test('every failing step explains itself', () => {
 		const steps = [step('Ready for review', true), { name: 'QA assured', passed: false, message: 'missing label' }];
-		const { summary } = formatCheckRunOutput(buildCheckVerdict(result({ steps }), { hasReviews: true }));
+		const { summary } = formatCheckRunOutput(buildCheckVerdict(result({ steps }), { reviews: approved }));
 
 		expect(summary).toContain('- ✅ **Ready for review**');
 		expect(summary).toContain('- ❌ **QA assured** — missing label');

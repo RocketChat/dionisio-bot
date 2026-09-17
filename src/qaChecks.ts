@@ -1,5 +1,6 @@
 import type { Context } from 'probot';
 import type { Log } from './logger';
+import type { ReviewSummary } from './reviews';
 
 export interface QAStep {
 	name: string;
@@ -231,11 +232,17 @@ export interface CheckVerdict {
 	steps: QAStep[];
 }
 
-const reviewStep = (hasReviews: boolean): QAStep => ({
-	name: 'Reviewed',
-	passed: hasReviews,
-	message: hasReviews ? undefined : 'This PR has not been reviewed yet',
-});
+const reviewStep = (reviews: ReviewSummary): QAStep => {
+	if (reviews.changesRequested.length > 0) {
+		return { name: 'Reviewed', passed: false, message: `Changes requested by ${reviews.changesRequested.join(', ')}` };
+	}
+
+	if (reviews.approvals.length === 0) {
+		return { name: 'Reviewed', passed: false, message: 'This PR has not been approved yet' };
+	}
+
+	return { name: 'Reviewed', passed: true };
+};
 
 /**
  * The single place a conclusion is decided. Everything user-facing renders from the verdict,
@@ -243,14 +250,18 @@ const reviewStep = (hasReviews: boolean): QAStep => ({
  *
  * Invariant: `conclusion === 'success'` if and only if every step passed.
  */
-export const buildCheckVerdict = (result: QAChecksResult, gates: { hasReviews: boolean }): CheckVerdict => {
-	const steps = [...result.steps, reviewStep(gates.hasReviews)];
+export const buildCheckVerdict = (result: QAChecksResult, gates: { reviews: ReviewSummary }): CheckVerdict => {
+	const steps = [...result.steps, reviewStep(gates.reviews)];
 
 	if (result.isDraft) {
 		return { conclusion: 'neutral', title: 'Draft — not ready for review', steps };
 	}
 
-	if (!gates.hasReviews) {
+	if (gates.reviews.changesRequested.length > 0) {
+		return { conclusion: 'failure', title: 'Changes requested', steps };
+	}
+
+	if (gates.reviews.approvals.length === 0) {
 		return { conclusion: 'neutral', title: 'Waiting for reviews', steps };
 	}
 
