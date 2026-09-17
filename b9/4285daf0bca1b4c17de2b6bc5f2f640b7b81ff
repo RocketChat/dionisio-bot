@@ -1,0 +1,30 @@
+src/mergeDecision.ts
+  s_a38068632aee8a::t_2d2bca6a9c57ea 19,51
+test/reviews.test.ts
+  s_a38068632aee8a::t_83255b4ca447db 1-61
+test/mergeDecision.test.ts
+  s_a38068632aee8a::t_9ec5bd72ae7e35 10,26,34
+src/reviews.ts
+  s_a38068632aee8a::t_13d36299da9a97 1-55
+src/index.ts
+  s_a38068632aee8a::t_2d2bca6a9c57ea 33,645,776
+  s_a38068632aee8a::t_ed1a6bf04dabe7 618-621
+  s_a38068632aee8a::t_d50879dd99222d 571-572,575
+  s_a38068632aee8a::t_459cadcb9fb093 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b94285daf0bca1b4c17de2b6bc5f2f640b7b81ff",
+  "prompts": {},
+  "sessions": {
+    "s_a38068632aee8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e52eeb28-abef-4ade-9a5f-2a6abbee67b7",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
