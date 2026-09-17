@@ -10,6 +10,7 @@ import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
 import { errorIdLine, reportError } from './reportError';
+import { resolvePullRequestForHead } from './resolvePullRequest';
 
 export = (app: Probot) => {
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
@@ -44,7 +45,9 @@ export = (app: Probot) => {
 		);
 
 		const { owner, repo } = context.repo();
-		await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref, context.id, log);
+		await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref, context.id, log, [
+			{ number: pr.data.number },
+		]);
 	});
 
 	app.on(
@@ -77,8 +80,8 @@ export = (app: Probot) => {
 			);
 
 			const { owner, repo } = context.repo();
-			const { head } = context.payload.pull_request;
-			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log);
+			const { head, number } = context.payload.pull_request;
+			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log, [{ number }]);
 		},
 	);
 
@@ -431,13 +434,14 @@ export = (app: Probot) => {
 		owner: string,
 		repo: string,
 		headSha: string,
-		headBranch: string,
+		headBranch: string | null,
 		delivery: string,
 		log: Log,
+		hints: { number: number }[] = [],
 	): Promise<void> {
 		const startTime = new Date();
 		try {
-			await runQACheckRun(octokit, owner, repo, headSha, headBranch, startTime, log);
+			await runQACheckRun(octokit, owner, repo, headSha, headBranch, startTime, log, hints);
 		} catch (error) {
 			log.error({ err: error, headSha }, 'QA check run failed');
 			// the check run is the user-facing surface here; quote the delivery id so the failure can be traced
@@ -465,62 +469,17 @@ export = (app: Probot) => {
 		owner: string,
 		repo: string,
 		headSha: string,
-		headBranch: string,
+		headBranch: string | null,
 		startTime: Date,
 		log: Log,
+		hints: { number: number }[],
 	): Promise<void> {
 		const repoParams = { owner, repo };
 
-		let prNumber: number | null = null;
-		let baseOwner = owner;
-		let baseRepo = repo;
-
-		const sameRepoPrs = await octokit.pulls.list({
-			...repoParams,
-			state: 'open',
-			head: `${owner}:${headBranch}`,
-			sort: 'updated',
-			direction: 'desc',
-			per_page: 1,
-		});
-		const sameRepoPr = sameRepoPrs.data[0];
-		if (sameRepoPr) {
-			prNumber = sameRepoPr.number;
-		}
-
-		if (prNumber === null) {
-			try {
-				const commitPrs = await octokit.repos.listPullRequestsAssociatedWithCommit({
-					...repoParams,
-					commit_sha: headSha,
-				});
-				const openPr = commitPrs.data.find((p) => p.state === 'open');
-				if (openPr?.number && openPr.base?.repo) {
-					prNumber = openPr.number;
-					baseOwner = openPr.base.repo.owner?.login ?? owner;
-					baseRepo = openPr.base.repo.name ?? repo;
-				}
-			} catch (error) {
-				log.debug({ err: error, headSha }, 'commit not found in base repo, probably from a fork');
-			}
-		}
-
-		// Fallback when event is from base repo but PR is from fork (commit not in base repo)
-		if (prNumber === null) {
-			const openPrs = await octokit.pulls.list({
-				...repoParams,
-				state: 'open',
-				sort: 'updated',
-				direction: 'desc',
-				per_page: 30,
-			});
-			const prByHeadSha = openPrs.data.find((p) => p.head.sha === headSha);
-			if (prByHeadSha) {
-				prNumber = prByHeadSha.number;
-				baseOwner = owner;
-				baseRepo = repo;
-			}
-		}
+		const resolvedPr = await resolvePullRequestForHead(octokit, repoParams, headSha, headBranch, hints, log);
+		const prNumber = resolvedPr?.number ?? null;
+		const baseOwner = resolvedPr?.baseOwner ?? owner;
+		const baseRepo = resolvedPr?.baseRepo ?? repo;
 
 		if (prNumber === null) {
 			await upsertCheckRun(
@@ -621,9 +580,9 @@ export = (app: Probot) => {
 
 	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
 		const log = eventLogger(context);
-		const { head_branch: headBranch, head_sha: headSha } = context.payload.check_suite;
+		const { head_branch: headBranch, head_sha: headSha, pull_requests: hints } = context.payload.check_suite;
 		const { owner, repo } = context.repo();
-		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch ?? headSha, context.id, log);
+		await runDionisioQACheckForRef(context.octokit, owner, repo, headSha, headBranch, context.id, log, hints ?? []);
 	}
 
 	app.on(['check_suite.requested'], async function check(context) {
@@ -651,44 +610,21 @@ export = (app: Probot) => {
 			return;
 		}
 
-		let prNumber: number | null = null;
-		let baseOwner = owner;
-		let baseRepo = repo;
+		const resolvedPr = await resolvePullRequestForHead(
+			context.octokit,
+			{ owner, repo },
+			headSha,
+			headBranch,
+			context.payload.check_suite.pull_requests ?? [],
+			log,
+		);
 
-		if (headBranch) {
-			const prs = await context.octokit.pulls.list({
-				owner,
-				repo,
-				state: 'open',
-				head: `${owner}:${headBranch}`,
-				per_page: 1,
-			});
-			if (prs.data[0]) {
-				prNumber = prs.data[0].number;
-			}
-		}
-
-		if (prNumber === null) {
-			const openPrs = await context.octokit.pulls.list({
-				owner,
-				repo,
-				state: 'open',
-				sort: 'updated',
-				direction: 'desc',
-				per_page: 30,
-			});
-			const match = openPrs.data.find((p) => p.head.sha === headSha);
-			if (match) {
-				prNumber = match.number;
-				baseOwner = owner;
-				baseRepo = repo;
-			}
-		}
-
-		if (prNumber === null) {
+		if (!resolvedPr) {
 			log.warn({ headSha, headBranch }, 'QA check succeeded but no open pull request was found to merge');
 			return;
 		}
+
+		const { number: prNumber, baseOwner, baseRepo } = resolvedPr;
 
 		const fullPr = await context.octokit.pulls.get({
 			owner: baseOwner,
