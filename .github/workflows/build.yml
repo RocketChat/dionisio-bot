@@ -22,7 +22,7 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: '22'
-                  cache: 'npm'
+                  cache: 'yarn'
 
             - name: Install dependencies
               run: yarn
@@ -30,5 +30,7 @@ jobs:
             - run: yarn lint
 
             - run: yarn typecheck
+
+            - run: yarn test
 
             - run: yarn build
