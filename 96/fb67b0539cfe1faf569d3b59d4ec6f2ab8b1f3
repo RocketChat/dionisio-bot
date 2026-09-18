@@ -1,0 +1,58 @@
+test/resolvePullRequest.test.ts
+  s_a38068632aee8a::t_448cff7d080ebd 1-104
+src/resolvePullRequest.ts
+  s_a38068632aee8a::t_3fb24997adec89 1-27,29-80
+  s_a38068632aee8a::t_20b562a314b74a 28
+src/index.ts
+  s_a38068632aee8a::t_20b562a314b74a 506,548
+  s_a38068632aee8a::t_d8ee6849cb1009 554
+  s_a38068632aee8a::t_c3c7dd88818c1c 122
+  s_a38068632aee8a::t_7206a09206040d 86-88
+  s_a38068632aee8a::t_cb6185ebb3a34f 550
+  s_a38068632aee8a::t_56a69aacd0c120 509,513
+  s_a38068632aee8a::t_bc9500dc319919 23
+  s_a38068632aee8a::t_e45fd5388581e2 717,719
+  s_a38068632aee8a::t_a13465bb48a8ba 17
+  s_a38068632aee8a::t_2be380e77231fa 25-35,38-48
+  s_a38068632aee8a::t_81be727e9bc393 604-606,608-621,624-626,629-632,667-671,673-680,688-689,696-709,712
+  s_a38068632aee8a::t_51b203ee4bf3b5 536-543,551,556-557,560
+  s_a38068632aee8a::t_5ac0c725a10372 737,740-742,744-745,749-757,760-764,768-772,782-788
+  s_a38068632aee8a::t_7a64b60cf4fa3e 469-475
+  s_a38068632aee8a::t_386c78a4ccb762 633-644,647-666
+  s_a38068632aee8a::t_c79878f80d11d9 561
+  s_a38068632aee8a::t_99ff86b254c553 672
+  s_a38068632aee8a::t_0c46b9e7c5ed5d 49-51
+  s_a38068632aee8a::t_269dbcf1afac09 400-404,407,410-415,417-419,422-432,435-442,445-451
+  s_a38068632aee8a::t_89fb765b73577d 773-781
+  s_a38068632aee8a::t_5130d69f0f30f9 352,356-358
+  s_a38068632aee8a::t_26dfba34e63b8f 36-37
+  s_a38068632aee8a::t_974831cd3bf1a7 622-623
+  s_a38068632aee8a::t_34446415aef2ad 18
+test/mergeDecision.test.ts
+  s_a38068632aee8a::t_22585510a993f4 1-47
+src/mergeDecision.ts
+  s_a38068632aee8a::t_dccc7a9a76b4ef 1-2,11-60
+  s_a38068632aee8a::t_b0cb30bdcda03a 3-10
+test/mergeStrategy.test.ts
+  s_a38068632aee8a::t_f714d3d08ebf44 1-53
+src/mergeStrategy.ts
+  s_a38068632aee8a::t_a145613495a482 1-108
+.env.example
+  s_a38068632aee8a::t_5fbd41db8c326d 20-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "96fb67b0539cfe1faf569d3b59d4ec6f2ab8b1f3",
+  "prompts": {},
+  "sessions": {
+    "s_a38068632aee8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e52eeb28-abef-4ade-9a5f-2a6abbee67b7",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
