@@ -24,6 +24,8 @@ src/index.ts
   s_a38068632aee8a::t_756746441b2554 664-665
   s_a38068632aee8a::t_0bb2b394cca48d 646-647
   s_a38068632aee8a::t_031fcafbeee04f 628
+  s_a38068632aee8a::t_d0bf7d174fd808 637-642,695,698
+  s_a38068632aee8a::t_0c9af41e0d6c4e 760-763,765,767-768,772-773
 test/mergeDecision.test.ts
   s_a38068632aee8a::t_22585510a993f4 1-47
 src/mergeDecision.ts
