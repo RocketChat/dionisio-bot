@@ -14,6 +14,52 @@ const COMMUNITY_LABEL_EXCLUDED_AUTHORS = [
 		.filter(Boolean),
 ];
 
+/**
+ * Applies this run's decisions on top of whatever labels the PR carries now, so labels the bot
+ * never decided anything about survive — including ones added since the event arrived.
+ */
+export const nextLabels = (currentNames: string[], addedLabels: string[], removedLabels: string[]): string[] => [
+	...new Set([...currentNames.filter((label) => !removedLabels.includes(label)), ...addedLabels]),
+];
+
+const sameLabels = (a: string[], b: string[]) => a.length === b.length && a.every((label) => b.includes(label));
+
+/**
+ * Applies only the labels this run decided to change.
+ *
+ * `setLabels` replaces the whole set, so writing the list captured when the event arrived would
+ * drop anything a human added in between. Re-reading first and applying the delta keeps those.
+ */
+const reconcileLabels = async (
+	context: Context,
+	{ addedLabels, removedLabels }: { addedLabels: string[]; removedLabels: string[] },
+	log: Log,
+) => {
+	if (addedLabels.length === 0 && removedLabels.length === 0) {
+		log.debug('QA labels unchanged');
+		return;
+	}
+
+	const current = await context.octokit.paginate(context.octokit.issues.listLabelsOnIssue, {
+		...context.issue(),
+		per_page: 100,
+	});
+	const currentNames = current.map((label) => label.name);
+	const finalLabels = nextLabels(currentNames, addedLabels, removedLabels);
+
+	if (sameLabels(finalLabels, currentNames)) {
+		log.debug('QA labels already up to date');
+		return;
+	}
+
+	await context.octokit.issues.setLabels({
+		...context.issue(),
+		labels: finalLabels,
+	});
+
+	log.info({ addedLabels, removedLabels }, 'QA labels changed');
+};
+
 export const applyLabels = async (
 	pullRequest: {
 		mergeable?: boolean | null;
@@ -80,36 +126,25 @@ export const applyLabels = async (
 		});
 
 		const botComment = comments.data.find((comment) => comment.user?.login === GITHUB_LOGIN);
-		const ignoreUpdate = botComment && botComment.body === message;
 
-		if (ignoreUpdate) {
-			log.debug('QA comment and labels unchanged');
-			return;
-		}
-
-		if (botComment) {
+		// The comment and the labels are reconciled independently. An unchanged comment used to
+		// short-circuit the label write as well, so a label removed by hand was never restored.
+		if (!botComment) {
+			await context.octokit.issues.createComment({
+				...context.issue(),
+				body: message,
+			});
+		} else if (botComment.body !== message) {
 			await context.octokit.issues.updateComment({
 				...context.issue(),
 				comment_id: botComment.id,
 				body: message,
 			});
 		} else {
-			await context.octokit.issues.createComment({
-				...context.issue(),
-				body: message,
-			});
+			log.debug('QA comment unchanged');
 		}
 
-		await context.octokit.issues.setLabels({
-			...context.issue(),
-			labels: newLabels,
-		});
-
-		if (addedLabels.length > 0 || removedLabels.length > 0) {
-			log.info({ addedLabels, removedLabels }, 'QA labels changed');
-		} else {
-			log.debug('QA comment updated, labels unchanged');
-		}
+		await reconcileLabels(context, { addedLabels, removedLabels }, log);
 	} catch (error) {
 		log.error({ err: error }, 'applying QA labels failed');
 	}
