@@ -16,7 +16,7 @@ export interface MergeCandidate {
 	mergeable: boolean | null;
 	mergeableState: string;
 	readyToMerge: boolean;
-	hasReviews: boolean;
+	reviewsSatisfied: boolean;
 }
 
 /**
@@ -48,7 +48,7 @@ export const evaluateMergeDecision = (pr: MergeCandidate): MergeDecision => {
 		return { merge: false, reason: 'conflicts' };
 	}
 
-	if (!pr.hasReviews) {
+	if (!pr.reviewsSatisfied) {
 		return { merge: false, reason: 'reviews' };
 	}
 
