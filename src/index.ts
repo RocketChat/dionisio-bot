@@ -12,8 +12,10 @@ import {
 	blockedOnlyByMergeability,
 	CHECK_RUN_NAME,
 	type PullRequestForQA,
+	type QAChecksResult,
 } from './qaChecks';
 import { getPullRequestWithMergeability, type PullRequestData } from './pullRequest';
+import { evaluateMergeDecision } from './mergeDecision';
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
@@ -26,6 +28,28 @@ interface PrefetchedPullRequest {
 	repo: string;
 	data: PullRequestData;
 }
+
+interface QAOutcome {
+	prNumber: number;
+	baseOwner: string;
+	baseRepo: string;
+	pr: {
+		nodeId: string;
+		state: string;
+		draft: boolean;
+		merged: boolean;
+		mergeable: boolean | null;
+		mergeableState: string;
+	};
+	result: QAChecksResult;
+	hasReviews: boolean;
+	conclusion: 'success' | 'failure' | 'neutral';
+	output: { title: string; summary: string };
+}
+
+type QAComputation = { kind: 'no-pr' } | { kind: 'not-runnable' } | { kind: 'ok'; outcome: QAOutcome };
+
+const MERGE_NOTE_SEPARATOR = '\n\n### Merge\n';
 
 export = (app: Probot) => {
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
@@ -435,6 +459,13 @@ export = (app: Probot) => {
 		const [existing] = runs.data.check_runs;
 
 		if (existing) {
+			// Rewriting an unchanged check run re-emits check_run.completed and re-delivers the
+			// suite events back to us, so only write when something actually changed.
+			if (existing.conclusion === conclusion && existing.output?.title === output.title && existing.output?.summary === output.summary) {
+				log.debug({ checkRunId: existing.id, headSha }, 'check run unchanged');
+				return existing.id;
+			}
+
 			const updated = await octokit.checks.update({
 				...repoParams,
 				check_run_id: existing.id,
@@ -500,39 +531,32 @@ export = (app: Probot) => {
 		}
 	}
 
-	async function runQACheckRun(
+	/**
+	 * Works out the current QA state of the pull request at `headSha` without writing anything.
+	 *
+	 * Kept separate from the check run so the merge path can ask "is this still true?" without
+	 * updating a completed check run — which re-emits check_run.completed, completes the suite
+	 * again and delivers check_suite.completed right back to us.
+	 */
+	async function computeQAOutcome(
 		octokit: Context['octokit'],
 		owner: string,
 		repo: string,
 		headSha: string,
 		headBranch: string | null,
-		startTime: Date,
 		log: Log,
 		hints: { number: number }[],
 		prefetched?: PrefetchedPullRequest,
-	): Promise<void> {
+	): Promise<QAComputation> {
 		const repoParams = { owner, repo };
 
 		const resolvedPr = await resolvePullRequestForHead(octokit, repoParams, headSha, headBranch, hints, log);
-		const prNumber = resolvedPr?.number ?? null;
-		const baseOwner = resolvedPr?.baseOwner ?? owner;
-		const baseRepo = resolvedPr?.baseRepo ?? repo;
 
-		if (prNumber === null) {
-			await upsertCheckRun(
-				octokit,
-				repoParams,
-				headSha,
-				startTime,
-				'neutral',
-				{
-					title: 'No open PR',
-					summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
-				},
-				log,
-			);
-			return;
+		if (!resolvedPr) {
+			return { kind: 'no-pr' };
 		}
+
+		const { number: prNumber, baseOwner, baseRepo } = resolvedPr;
 
 		const prParams = { owner: baseOwner, repo: baseRepo, pull_number: prNumber };
 		const alreadyFetched =
@@ -598,6 +622,98 @@ export = (app: Probot) => {
 		}
 
 		if (!result) {
+			return { kind: 'not-runnable' };
+		}
+
+		const verdict = buildCheckVerdict(result, { hasReviews });
+
+		return {
+			kind: 'ok',
+			outcome: {
+				prNumber,
+				baseOwner,
+				baseRepo,
+				pr: {
+					nodeId: fullPr.node_id,
+					state: fullPr.state,
+					draft: Boolean(fullPr.draft),
+					merged: Boolean(fullPr.merged),
+					mergeable: fullPr.mergeable,
+					mergeableState: fullPr.mergeable_state ?? 'unknown',
+				},
+				result,
+				hasReviews,
+				conclusion: verdict.conclusion,
+				output: formatCheckRunOutput(verdict),
+			},
+		};
+	}
+
+	/**
+	 * Records the merge outcome on the check run, replacing any previous note rather than
+	 * appending to it. Updating a completed check run re-emits check_run.completed, so writing
+	 * an ever-growing summary would keep re-delivering check_suite.completed to this app.
+	 */
+	async function recordMergeNote(
+		octokit: Context['octokit'],
+		repoParams: { owner: string; repo: string },
+		headSha: string,
+		mergeResult: string,
+		log: Log,
+	): Promise<void> {
+		const runs = await octokit.checks.listForRef({ ...repoParams, ref: headSha, check_name: CHECK_RUN_NAME });
+		const [existing] = runs.data.check_runs;
+
+		if (!existing) {
+			return;
+		}
+
+		const existingSummary = existing.output?.summary ?? '';
+		const summary = `${existingSummary.split(MERGE_NOTE_SEPARATOR)[0]}${MERGE_NOTE_SEPARATOR}${mergeResult}`;
+
+		if (summary === existingSummary) {
+			log.debug({ headSha }, 'merge note unchanged');
+			return;
+		}
+
+		await octokit.checks.update({
+			...repoParams,
+			check_run_id: existing.id,
+			output: { title: existing.output?.title ?? CHECK_RUN_NAME, summary },
+		});
+	}
+
+	async function runQACheckRun(
+		octokit: Context['octokit'],
+		owner: string,
+		repo: string,
+		headSha: string,
+		headBranch: string | null,
+		startTime: Date,
+		log: Log,
+		hints: { number: number }[],
+		prefetched?: PrefetchedPullRequest,
+	): Promise<void> {
+		const repoParams = { owner, repo };
+		const computation = await computeQAOutcome(octokit, owner, repo, headSha, headBranch, log, hints, prefetched);
+
+		if (computation.kind === 'no-pr') {
+			await upsertCheckRun(
+				octokit,
+				repoParams,
+				headSha,
+				startTime,
+				'neutral',
+				{
+					title: 'No open PR',
+					summary: 'There is no open pull request for this branch. Open a PR to run Dionisio QA checks.',
+				},
+				log,
+			);
+			return;
+		}
+
+		if (computation.kind === 'not-runnable') {
 			await upsertCheckRun(
 				octokit,
 				repoParams,
@@ -613,9 +729,7 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const verdict = buildCheckVerdict(result, { hasReviews });
-
-		await upsertCheckRun(octokit, repoParams, headSha, startTime, verdict.conclusion, formatCheckRunOutput(verdict), log);
+		await upsertCheckRun(octokit, repoParams, headSha, startTime, computation.outcome.conclusion, computation.outcome.output, log);
 	}
 
 	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
@@ -640,55 +754,65 @@ export = (app: Probot) => {
 
 		const log = eventLogger(context);
 
-		const { head_sha: headSha, head_branch: headBranch } = context.payload.check_suite;
+		const { head_sha: headSha, head_branch: headBranch, pull_requests: hints, app: suiteApp } = context.payload.check_suite;
 		const { owner, repo } = context.repo();
 
+		// Cheap filter before the expensive part. Writing our own check run completes a suite for
+		// this app, which lands right back here, so recomputing unconditionally would double the
+		// QA work for every event. Reading the stored conclusion is safe as a *negative* filter:
+		// a stale value can only stop a merge that a recompute would have allowed, never allow one.
 		const runs = await context.octokit.checks.listForRef({ owner, repo, ref: headSha, check_name: CHECK_RUN_NAME });
-		const [dionisioRun] = runs.data.check_runs;
+		const [storedRun] = runs.data.check_runs;
 
-		if (!dionisioRun || dionisioRun.conclusion !== 'success') {
+		if (storedRun?.conclusion !== 'success') {
+			log.debug({ headSha, stored: storedRun?.conclusion ?? 'none' }, 'no stored QA success to act on');
 			return;
 		}
 
-		const resolvedPr = await resolvePullRequestForHead(
-			context.octokit,
-			{ owner, repo },
-			headSha,
-			headBranch,
-			context.payload.check_suite.pull_requests ?? [],
-			log,
-		);
+		// Recompute rather than trusting that conclusion to merge on: it may have been decided
+		// hours ago, under conditions that no longer hold.
+		const computation = await computeQAOutcome(context.octokit, owner, repo, headSha, headBranch, log, hints ?? []);
 
-		if (!resolvedPr) {
-			log.warn({ headSha, headBranch }, 'QA check succeeded but no open pull request was found to merge');
+		if (computation.kind !== 'ok') {
+			log.debug({ headSha, headBranch, kind: computation.kind }, 'no pull request to merge for this check suite');
 			return;
 		}
 
-		const { number: prNumber, baseOwner, baseRepo } = resolvedPr;
-
-		const { data: mergeCandidate } = await context.octokit.pulls.get({
-			owner: baseOwner,
-			repo: baseRepo,
-			pull_number: prNumber,
+		const { outcome } = computation;
+		const decision = evaluateMergeDecision({
+			state: outcome.pr.state,
+			draft: outcome.pr.draft,
+			merged: outcome.pr.merged,
+			mergeable: outcome.pr.mergeable,
+			mergeableState: outcome.pr.mergeableState,
+			readyToMerge: outcome.result.readyToMerge,
+			hasReviews: outcome.hasReviews,
 		});
 
-		if (!mergeCandidate.node_id) {
+		if (!decision.merge) {
+			log.info(
+				{ prNumber: outcome.prNumber, reason: decision.reason, suiteApp: suiteApp?.slug, mergeableState: outcome.pr.mergeableState },
+				'merge skipped',
+			);
 			return;
 		}
 
-		try {
-			const mergeResult = await tryMergePr(context.octokit, mergeCandidate.node_id, baseOwner, baseRepo, mergeCandidate.number, log);
-			const existingTitle = dionisioRun.output?.title ?? 'Dionisio QA';
-			const existingSummary = dionisioRun.output?.summary ?? '';
-			await context.octokit.checks.update({
-				owner,
-				repo,
-				check_run_id: dionisioRun.id,
-				output: { title: existingTitle, summary: `${existingSummary}\n\n### Merge\n${mergeResult}` },
-			});
-		} catch (error) {
-			log.error({ err: error, prNumber }, 'merge after QA success failed');
-		}
+		// Concurrent suite completions on the same PR would otherwise race into parallel merges.
+		await run(String(outcome.prNumber), async () => {
+			try {
+				const mergeResult = await tryMergePr(
+					context.octokit,
+					outcome.pr.nodeId,
+					outcome.baseOwner,
+					outcome.baseRepo,
+					outcome.prNumber,
+					log,
+				);
+				await recordMergeNote(context.octokit, { owner, repo }, headSha, mergeResult, log);
+			} catch (error) {
+				log.error({ err: error, prNumber: outcome.prNumber }, 'merge after QA success failed');
+			}
+		});
 	});
 
 	// app.on(["projects_v2_item.created"], (context) => {
