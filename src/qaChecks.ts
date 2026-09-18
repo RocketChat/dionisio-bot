@@ -25,6 +25,18 @@ export interface QAChecksResult {
 	newLabels: string[];
 }
 
+const MERGEABLE_STEP = 'Mergeable';
+
+/**
+ * True when mergeability is the only thing standing between this PR and a green check.
+ *
+ * GitHub computes mergeability lazily, and waiting for it costs seconds inside a webhook. Waiting
+ * is only worth it when the answer can still change the outcome — if anything else already fails,
+ * the conclusion is the same either way.
+ */
+export const blockedOnlyByMergeability = (result: QAChecksResult): boolean =>
+	result.mergeabilityUnknown && result.steps.every((step) => step.passed || step.name === MERGEABLE_STEP);
+
 export const normalizeVersion = (version: string) => {
 	const [major, minor = 0, patch = 0] = version.split('.');
 	return `${major}.${minor}.${patch}`;
@@ -150,7 +162,7 @@ export const runQAChecks = async (
 				message: !assured ? "This PR is missing the 'stat: QA assured' label" : undefined,
 			},
 			{
-				name: 'Mergeable',
+				name: MERGEABLE_STEP,
 				passed: mergeable,
 				message: mergeableMessage(),
 			},

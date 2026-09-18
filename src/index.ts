@@ -5,13 +5,27 @@ import { handleBackport } from './handleBackport';
 import { run } from './Queue';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
-import { runQAChecks, formatCheckRunOutput, buildCheckVerdict, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
-import { getPullRequestWithMergeability } from './pullRequest';
+import {
+	runQAChecks,
+	formatCheckRunOutput,
+	buildCheckVerdict,
+	blockedOnlyByMergeability,
+	CHECK_RUN_NAME,
+	type PullRequestForQA,
+} from './qaChecks';
+import { getPullRequestWithMergeability, type PullRequestData } from './pullRequest';
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
 import { errorIdLine, reportError } from './reportError';
 import { resolvePullRequestForHead } from './resolvePullRequest';
+
+/** A pull request the caller already fetched, reused when it is the one we resolved to. */
+interface PrefetchedPullRequest {
+	owner: string;
+	repo: string;
+	data: PullRequestData;
+}
 
 export = (app: Probot) => {
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
@@ -31,7 +45,7 @@ export = (app: Probot) => {
 			return;
 		}
 
-		await run(String(pr.data.number), () =>
+		await run(`${pr.data.base.repo.owner.login}/${pr.data.base.repo.name}#${pr.data.number}`, () =>
 			applyLabels(
 				{
 					...pr.data,
@@ -47,9 +61,17 @@ export = (app: Probot) => {
 		);
 
 		const { owner, repo } = context.repo();
-		await runDionisioQACheckForRef(context.octokit, owner, repo, pr.data.head.sha, pr.data.head.ref, context.id, log, [
-			{ number: pr.data.number },
-		]);
+		await runDionisioQACheckForRef(
+			context.octokit,
+			owner,
+			repo,
+			pr.data.head.sha,
+			pr.data.head.ref,
+			context.id,
+			log,
+			[{ number: pr.data.number }],
+			{ owner, repo, data: pr.data },
+		);
 	});
 
 	app.on(
@@ -64,16 +86,17 @@ export = (app: Probot) => {
 			const { owner, repo } = context.repo();
 			const { base, head, number } = context.payload.pull_request;
 
-			// The event payload reports mergeability as null while GitHub is still computing it,
-			// and `url` is the API url, which the projects lookup cannot resolve.
-			const fullPr = await getPullRequestWithMergeability(context.octokit, { owner, repo, pull_number: number }, log);
+			// Fetched rather than read from the payload: `url` there is the API url, which the
+			// projects lookup cannot resolve. Mergeability is not waited on here — the check run
+			// path waits only if it turns out to be the one thing left deciding the outcome.
+			const { data: pullRequest } = await context.octokit.pulls.get({ owner, repo, pull_number: number });
 
-			await run(String(number), () =>
+			await run(`${owner}/${repo}#${number}`, () =>
 				applyLabels(
 					{
-						...fullPr.data,
-						url: fullPr.data.html_url,
-						milestone: fullPr.data.milestone?.title,
+						...pullRequest,
+						url: pullRequest.html_url,
+						milestone: pullRequest.milestone?.title,
 					},
 					base.repo.owner.login,
 					base.repo.name,
@@ -83,7 +106,11 @@ export = (app: Probot) => {
 				),
 			);
 
-			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log, [{ number }]);
+			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log, [{ number }], {
+				owner,
+				repo,
+				data: pullRequest,
+			});
 		},
 	);
 
@@ -442,10 +469,15 @@ export = (app: Probot) => {
 		delivery: string,
 		log: Log,
 		hints: { number: number }[] = [],
+		prefetched?: PrefetchedPullRequest,
 	): Promise<void> {
 		const startTime = new Date();
 		try {
-			await runQACheckRun(octokit, owner, repo, headSha, headBranch, startTime, log, hints);
+			// Serialised per commit: the check run is keyed by head sha, and two deliveries racing
+			// here would both see no existing run and each create one.
+			await run(`check:${owner}/${repo}@${headSha}`, () =>
+				runQACheckRun(octokit, owner, repo, headSha, headBranch, startTime, log, hints, prefetched),
+			);
 		} catch (error) {
 			log.error({ err: error, headSha }, 'QA check run failed');
 			// the check run is the user-facing surface here; quote the delivery id so the failure can be traced
@@ -477,6 +509,7 @@ export = (app: Probot) => {
 		startTime: Date,
 		log: Log,
 		hints: { number: number }[],
+		prefetched?: PrefetchedPullRequest,
 	): Promise<void> {
 		const repoParams = { owner, repo };
 
@@ -501,10 +534,18 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const [fullPr, reviews] = await Promise.all([
-			getPullRequestWithMergeability(octokit, { owner: baseOwner, repo: baseRepo, pull_number: prNumber }, log),
+		const prParams = { owner: baseOwner, repo: baseRepo, pull_number: prNumber };
+		const alreadyFetched =
+			prefetched && prefetched.owner === baseOwner && prefetched.repo === baseRepo && prefetched.data.number === prNumber
+				? prefetched.data
+				: undefined;
+
+		const [fetched, reviews] = await Promise.all([
+			alreadyFetched ?? octokit.pulls.get(prParams).then((response) => response.data),
 			octokit.paginate(octokit.pulls.listReviews, { owner: baseOwner, repo: baseRepo, pull_number: prNumber, per_page: 100 }),
 		]);
+
+		let fullPr = fetched;
 
 		const hasReviews = reviews.some((r) => r.user?.type !== 'Bot');
 
@@ -515,12 +556,12 @@ export = (app: Probot) => {
 				repo: baseRepo,
 				pr: {
 					number: prNumber,
-					title: fullPr.data.title,
-					milestone: fullPr.data.milestone?.title,
+					title: fullPr.title,
+					milestone: fullPr.milestone?.title,
 					head: {
-						owner: fullPr.data.head.repo?.owner.login ?? baseOwner,
-						repo: fullPr.data.head.repo?.name ?? baseRepo,
-						sha: fullPr.data.head.sha,
+						owner: fullPr.head.repo?.owner.login ?? baseOwner,
+						repo: fullPr.head.repo?.name ?? baseRepo,
+						sha: fullPr.head.sha,
 					},
 				},
 				log,
@@ -530,17 +571,31 @@ export = (app: Probot) => {
 		}
 
 		const prForQA: PullRequestForQA = {
-			mergeable: fullPr.data.mergeable,
-			draft: fullPr.data.draft,
-			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
-			mergeable_state: fullPr.data.mergeable_state ?? 'unknown',
-			milestone: fullPr.data.milestone?.title,
-			url: fullPr.data.html_url ?? fullPr.data.url,
-			number: fullPr.data.number,
-			title: fullPr.data.title,
+			mergeable: fullPr.mergeable,
+			draft: fullPr.draft,
+			labels: fullPr.labels.map((l) => ({ name: (l as { name: string }).name })),
+			mergeable_state: fullPr.mergeable_state ?? 'unknown',
+			milestone: fullPr.milestone?.title,
+			url: fullPr.html_url ?? fullPr.url,
+			number: fullPr.number,
+			title: fullPr.title,
 		};
 
-		const result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.data.base.ref, octokit, log);
+		let result = await runQAChecks(prForQA, baseOwner, baseRepo, fullPr.base.ref, octokit, log);
+
+		if (result && blockedOnlyByMergeability(result)) {
+			// Everything else passes, so the answer GitHub is still computing decides the conclusion.
+			// This is the only case where the wait buys anything.
+			fullPr = (await getPullRequestWithMergeability(octokit, prParams, log)).data;
+			result = await runQAChecks(
+				{ ...prForQA, mergeable: fullPr.mergeable, mergeable_state: fullPr.mergeable_state ?? 'unknown' },
+				baseOwner,
+				baseRepo,
+				fullPr.base.ref,
+				octokit,
+				log,
+			);
+		}
 
 		if (!result) {
 			await upsertCheckRun(
@@ -611,18 +666,18 @@ export = (app: Probot) => {
 
 		const { number: prNumber, baseOwner, baseRepo } = resolvedPr;
 
-		const fullPr = await context.octokit.pulls.get({
+		const { data: mergeCandidate } = await context.octokit.pulls.get({
 			owner: baseOwner,
 			repo: baseRepo,
 			pull_number: prNumber,
 		});
 
-		if (!fullPr.data.node_id) {
+		if (!mergeCandidate.node_id) {
 			return;
 		}
 
 		try {
-			const mergeResult = await tryMergePr(context.octokit, fullPr.data.node_id, baseOwner, baseRepo, fullPr.data.number, log);
+			const mergeResult = await tryMergePr(context.octokit, mergeCandidate.node_id, baseOwner, baseRepo, mergeCandidate.number, log);
 			const existingTitle = dionisioRun.output?.title ?? 'Dionisio QA';
 			const existingSummary = dionisioRun.output?.summary ?? '';
 			await context.octokit.checks.update({
