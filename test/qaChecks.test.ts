@@ -1,4 +1,12 @@
-import { buildCheckVerdict, formatCheckRunOutput, runQAChecks, type PullRequestForQA, type QAChecksResult, type QAStep } from '../src/qaChecks';
+import {
+	blockedOnlyByMergeability,
+	buildCheckVerdict,
+	formatCheckRunOutput,
+	runQAChecks,
+	type PullRequestForQA,
+	type QAChecksResult,
+	type QAStep,
+} from '../src/qaChecks';
 import type { Log } from '../src/logger';
 
 const silentLog = { debug() {}, info() {}, warn() {}, error() {} } as unknown as Log;
@@ -101,6 +109,27 @@ describe('runQAChecks', () => {
 			expect(qa).not.toBeNull();
 			expect(qa?.readyToMerge).toBe(qa?.steps.every((s) => s.passed));
 		}
+	});
+});
+
+describe('blockedOnlyByMergeability', () => {
+	// Decides whether waiting on GitHub is worth seconds inside a webhook.
+	test('true when mergeability is the last thing missing', async () => {
+		const qa = await runQAChecks(prForQA({ mergeable: null }), 'o', 'r', 'develop', fakeOctokit(), silentLog);
+
+		expect(blockedOnlyByMergeability(qa!)).toBe(true);
+	});
+
+	test('false when something else already fails, so the answer cannot change the outcome', async () => {
+		const qa = await runQAChecks(prForQA({ mergeable: null, labels: [] }), 'o', 'r', 'develop', fakeOctokit(), silentLog);
+
+		expect(blockedOnlyByMergeability(qa!)).toBe(false);
+	});
+
+	test('false once mergeability is known', async () => {
+		const qa = await runQAChecks(prForQA({ mergeable: true }), 'o', 'r', 'develop', fakeOctokit(), silentLog);
+
+		expect(blockedOnlyByMergeability(qa!)).toBe(false);
 	});
 });
 

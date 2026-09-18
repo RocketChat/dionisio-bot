@@ -1,6 +1,8 @@
 import type { Context } from 'probot';
 import type { Log } from './logger';
 
+export type PullRequestData = Awaited<ReturnType<Context['octokit']['pulls']['get']>>['data'];
+
 const MERGEABILITY_ATTEMPTS = 3;
 const MERGEABILITY_DELAY_MS = 1_000;
 
