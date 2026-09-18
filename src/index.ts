@@ -16,6 +16,7 @@ import {
 } from './qaChecks';
 import { getPullRequestWithMergeability, type PullRequestData } from './pullRequest';
 import { evaluateMergeDecision } from './mergeDecision';
+import { chooseMergeStrategy, getMergeCapabilities } from './mergeStrategy';
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
@@ -40,6 +41,8 @@ interface QAOutcome {
 		merged: boolean;
 		mergeable: boolean | null;
 		mergeableState: string;
+		headSha: string;
+		baseRef: string;
 	};
 	result: QAChecksResult;
 	hasReviews: boolean;
@@ -50,6 +53,9 @@ interface QAOutcome {
 type QAComputation = { kind: 'no-pr' } | { kind: 'not-runnable' } | { kind: 'ok'; outcome: QAOutcome };
 
 const MERGE_NOTE_SEPARATOR = '\n\n### Merge\n';
+
+// Off by default: a direct squash is the only strategy that does not wait for anything.
+const ALLOW_DIRECT_SQUASH_MERGE = process.env.ALLOW_DIRECT_SQUASH_MERGE === 'true';
 
 export = (app: Probot) => {
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
@@ -364,10 +370,13 @@ export = (app: Probot) => {
 		owner: string,
 		repo: string,
 		pullNumber: number,
+		headSha: string,
 		log: Log,
 	): Promise<string | null> {
 		try {
-			await octokit.pulls.merge({ owner, repo, pull_number: pullNumber, merge_method: 'squash' });
+			// Pinning the sha makes GitHub reject the merge with a 409 if the head moved since QA ran,
+			// so we can never merge code that was not the code we checked.
+			await octokit.pulls.merge({ owner, repo, pull_number: pullNumber, merge_method: 'squash', sha: headSha });
 			return null;
 		} catch (error: unknown) {
 			log.warn({ err: error }, 'squash merge failed');
@@ -409,39 +418,58 @@ export = (app: Probot) => {
 		}
 	}
 
+	/**
+	 * Runs exactly the strategy the branch supports. There is deliberately no fallback: escalating
+	 * past a rejected enqueue is how a merge ends up bypassing the queue it was supposed to go
+	 * through.
+	 */
 	async function tryMergePr(
 		octokit: Context['octokit'],
-		nodeId: string,
-		owner: string,
-		repo: string,
-		pullNumber: number,
+		pr: { nodeId: string; owner: string; repo: string; number: number; headSha: string; baseRef: string; mergeableState: string },
 		log: Log,
 	): Promise<string> {
-		const lines: string[] = [];
+		const capabilities = await getMergeCapabilities(octokit, pr.owner, pr.repo, pr.baseRef, log);
+		const choice = chooseMergeStrategy({
+			...capabilities,
+			mergeableState: pr.mergeableState,
+			allowDirectSquash: ALLOW_DIRECT_SQUASH_MERGE,
+		});
 
-		const enqueueErr = await enqueuePrInMergeQueue(octokit, nodeId, log);
-		if (enqueueErr === null) {
-			log.info({ strategy: 'merge-queue' }, 'pull request merge triggered');
-			return '🚀 Enqueued in merge queue';
+		if ('skip' in choice) {
+			log.info({ reason: choice.skip, ...capabilities, mergeableState: pr.mergeableState }, 'no merge strategy available');
+			return `⚠️ Not merged: ${choice.skip}`;
 		}
-		lines.push(`❌ Enqueue: ${enqueueErr}`);
 
-		const autoMergeErr = await enableMergeWhenReady(octokit, nodeId, log);
-		if (autoMergeErr === null) {
-			log.info({ strategy: 'auto-merge' }, 'pull request merge triggered');
-			return '🔄 Auto-merge enabled (merge when ready)';
+		const { strategy } = choice;
+
+		if (strategy === 'queue') {
+			const error = await enqueuePrInMergeQueue(octokit, pr.nodeId, log);
+			if (error === null) {
+				log.info({ strategy }, 'pull request merge triggered');
+				return '🚀 Enqueued in merge queue';
+			}
+			// The branch has a queue, so a rejection means this PR is not ready for it yet.
+			log.warn({ strategy, error }, 'merge queue refused the pull request');
+			return `❌ Merge queue refused this PR: ${error}`;
 		}
-		lines.push(`❌ Auto-merge: ${autoMergeErr}`);
 
-		const squashErr = await mergePrWithSquash(octokit, owner, repo, pullNumber, log);
-		if (squashErr === null) {
-			log.info({ strategy: 'squash' }, 'pull request merge triggered');
+		if (strategy === 'auto-merge') {
+			const error = await enableMergeWhenReady(octokit, pr.nodeId, log);
+			if (error === null) {
+				log.info({ strategy }, 'pull request merge triggered');
+				return '🔄 Auto-merge enabled (merge when ready)';
+			}
+			log.warn({ strategy, error }, 'enabling auto-merge failed');
+			return `❌ Auto-merge failed: ${error}`;
+		}
+
+		const error = await mergePrWithSquash(octokit, pr.owner, pr.repo, pr.number, pr.headSha, log);
+		if (error === null) {
+			log.info({ strategy }, 'pull request merge triggered');
 			return '✅ Squash-merged directly';
 		}
-		lines.push(`❌ Squash merge: ${squashErr}`);
-
-		log.error('all merge strategies failed');
-		return `⚠️ All merge strategies failed\n${lines.join('\n')}`;
+		log.warn({ strategy, error }, 'squash merge failed');
+		return `❌ Squash merge failed: ${error}`;
 	}
 
 	async function upsertCheckRun(
@@ -640,6 +668,8 @@ export = (app: Probot) => {
 					merged: Boolean(fullPr.merged),
 					mergeable: fullPr.mergeable,
 					mergeableState: fullPr.mergeable_state ?? 'unknown',
+					headSha: fullPr.head.sha,
+					baseRef: fullPr.base.ref,
 				},
 				result,
 				hasReviews,
@@ -802,10 +832,15 @@ export = (app: Probot) => {
 			try {
 				const mergeResult = await tryMergePr(
 					context.octokit,
-					outcome.pr.nodeId,
-					outcome.baseOwner,
-					outcome.baseRepo,
-					outcome.prNumber,
+					{
+						nodeId: outcome.pr.nodeId,
+						owner: outcome.baseOwner,
+						repo: outcome.baseRepo,
+						number: outcome.prNumber,
+						headSha: outcome.pr.headSha,
+						baseRef: outcome.pr.baseRef,
+						mergeableState: outcome.pr.mergeableState,
+					},
 					log,
 				);
 				await recordMergeNote(context.octokit, { owner, repo }, headSha, mergeResult, log);
