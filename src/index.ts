@@ -1,5 +1,5 @@
 import { Probot, Context } from 'probot';
-import { applyLabels } from './handleQALabels';
+import { applyLabels, GITHUB_LOGIN, type QAPullRequestEvent } from './handleQALabels';
 import { handlePatch } from './handlePatch';
 import { handleBackport } from './handleBackport';
 import { run } from './Queue';
@@ -57,12 +57,36 @@ const MERGE_NOTE_SEPARATOR = '\n\n### Merge\n';
 // Off by default: a direct squash is the only strategy that does not wait for anything.
 const ALLOW_DIRECT_SQUASH_MERGE = process.env.ALLOW_DIRECT_SQUASH_MERGE === 'true';
 
+// Annotated rather than inferred, so this list and QAPullRequestEvent cannot drift apart.
+const QA_PULL_REQUEST_EVENTS: QAPullRequestEvent[] = [
+	'pull_request.opened',
+	'pull_request.synchronize',
+	'pull_request.edited',
+	'pull_request.labeled',
+	'pull_request.unlabeled',
+	'pull_request.reopened',
+	'pull_request.ready_for_review',
+	'pull_request.converted_to_draft',
+	'pull_request.milestoned',
+	'pull_request.demilestoned',
+];
+
 export = (app: Probot) => {
+	/**
+	 * Milestoning a pull request arrives here on installations where GitHub still delivers it as an
+	 * `issues` event, and on `pull_request.milestoned` below where it does not. Which one applies is
+	 * not documented, so both are handled; if both arrive the second is a no-op.
+	 */
 	app.on(['issues.milestoned', 'issues.demilestoned'], async (context): Promise<void> => {
 		const log = eventLogger(context);
 		const { issue } = context.payload;
 
 		if (!issue.pull_request) {
+			return;
+		}
+
+		if (context.payload.sender?.login === GITHUB_LOGIN) {
+			log.debug('ignoring event triggered by the bot itself');
 			return;
 		}
 
@@ -104,45 +128,85 @@ export = (app: Probot) => {
 		);
 	});
 
-	app.on(
-		['pull_request.opened', 'pull_request.synchronize', 'pull_request.edited', 'pull_request.labeled', 'pull_request.unlabeled'],
-		async (context): Promise<void> => {
-			const log = eventLogger(context);
+	app.on(QA_PULL_REQUEST_EVENTS, async (context): Promise<void> => {
+		const log = eventLogger(context);
 
-			if (context.payload.pull_request.closed_at) {
-				return;
-			}
+		// The bot's own label and comment writes come back as events; recomputing on them repeats
+		// work that produced them. applyLabels guards this too, for its other callers.
+		if (context.payload.sender?.login === GITHUB_LOGIN) {
+			log.debug('ignoring event triggered by the bot itself');
+			return;
+		}
 
-			const { owner, repo } = context.repo();
-			const { base, head, number } = context.payload.pull_request;
+		if (context.payload.pull_request.closed_at) {
+			return;
+		}
 
-			// Fetched rather than read from the payload: `url` there is the API url, which the
-			// projects lookup cannot resolve. Mergeability is not waited on here — the check run
-			// path waits only if it turns out to be the one thing left deciding the outcome.
-			const { data: pullRequest } = await context.octokit.pulls.get({ owner, repo, pull_number: number });
+		const { owner, repo } = context.repo();
+		const { base, head, number } = context.payload.pull_request;
 
-			await run(`${owner}/${repo}#${number}`, () =>
-				applyLabels(
-					{
-						...pullRequest,
-						url: pullRequest.html_url,
-						milestone: pullRequest.milestone?.title,
-					},
-					base.repo.owner.login,
-					base.repo.name,
-					base.ref,
-					context,
-					log,
-				),
-			);
+		// Fetched rather than read from the payload: `url` there is the API url, which the
+		// projects lookup cannot resolve. Mergeability is not waited on here — the check run
+		// path waits only if it turns out to be the one thing left deciding the outcome.
+		const { data: pullRequest } = await context.octokit.pulls.get({ owner, repo, pull_number: number });
 
-			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log, [{ number }], {
-				owner,
-				repo,
-				data: pullRequest,
-			});
-		},
-	);
+		await run(`${owner}/${repo}#${number}`, () =>
+			applyLabels(
+				{
+					...pullRequest,
+					url: pullRequest.html_url,
+					milestone: pullRequest.milestone?.title,
+				},
+				base.repo.owner.login,
+				base.repo.name,
+				base.ref,
+				context,
+				log,
+			),
+		);
+
+		await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log, [{ number }], {
+			owner,
+			repo,
+			data: pullRequest,
+		});
+	});
+
+	app.on(['pull_request_review.submitted', 'pull_request_review.dismissed'], async (context): Promise<void> => {
+		const log = eventLogger(context);
+		const { review, pull_request: pullRequest } = context.payload;
+
+		// A bot review cannot change the review gate, and skipping them is what stops the changeset
+		// review this app posts itself from bouncing straight back in as a recomputation.
+		if (review.user?.type === 'Bot' || context.payload.sender?.login === GITHUB_LOGIN) {
+			log.debug('ignoring review from a bot');
+			return;
+		}
+
+		if (pullRequest.state !== 'open') {
+			return;
+		}
+
+		const { owner, repo } = context.repo();
+		// Review payloads carry no mergeable state, so go through the check run path, which reads
+		// the pull request itself, rather than the label path.
+		await runDionisioQACheckForRef(context.octokit, owner, repo, pullRequest.head.sha, pullRequest.head.ref, context.id, log, [
+			{ number: pullRequest.number },
+		]);
+	});
+
+	// The "Re-run" button on the check run. Without this it does nothing at all.
+	app.on(['check_run.rerequested'], async (context): Promise<void> => {
+		const log = eventLogger(context);
+		const { check_run: checkRun } = context.payload;
+
+		if (checkRun.name !== CHECK_RUN_NAME) {
+			return;
+		}
+
+		const { owner, repo } = context.repo();
+		await runDionisioQACheckForRef(context.octokit, owner, repo, checkRun.head_sha, null, context.id, log, checkRun.pull_requests ?? []);
+	});
 
 	app.on(['issue_comment.created'], async (context): Promise<void> => {
 		const log = eventLogger(context);
