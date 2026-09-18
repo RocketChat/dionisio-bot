@@ -72,8 +72,11 @@ export const applyLabels = async (
 			wrongVersion: result.wrongVersion,
 		});
 
+		// Comments come back oldest first, and this one is written on pull_request.opened, so it is
+		// at the front. One page is enough; paginating would cost a round trip per 100 comments.
 		const comments = await context.octokit.issues.listComments({
 			...context.issue(),
+			per_page: 100,
 		});
 
 		const botComment = comments.data.find((comment) => comment.user?.login === GITHUB_LOGIN);
