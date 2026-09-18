@@ -13,6 +13,8 @@ export interface QAChecksResult {
 	hasConflicts: boolean;
 	assured: boolean;
 	mergeable: boolean;
+	mergeabilityUnknown: boolean;
+	isDraft: boolean;
 	hasMilestone: boolean;
 	hasInvalidTitle: boolean;
 	wrongVersion?: { currentVersion: string; targetVersion: string };
@@ -22,6 +24,11 @@ export interface QAChecksResult {
 	currentLabels: string[];
 	newLabels: string[];
 }
+
+export const normalizeVersion = (version: string) => {
+	const [major, minor = 0, patch = 0] = version.split('.');
+	return `${major}.${minor}.${patch}`;
+};
 
 const getProjects = async (octokit: Context['octokit'], url: string): Promise<boolean> => {
 	const query = `query ($pull_request_url: URI!){
@@ -52,6 +59,7 @@ const VALID_PR_TITLE_REGEXP =
 
 export interface PullRequestForQA {
 	mergeable?: boolean | null;
+	draft?: boolean;
 	labels: { name: string }[];
 	mergeable_state: string;
 	milestone?: string;
@@ -107,14 +115,30 @@ export const runQAChecks = async (
 		});
 
 		const assured = Boolean(currentLabels.includes('stat: QA assured'));
-		const mergeable = Boolean(pullRequest.mergeable !== false && !hasConflicts);
+		const isDraft = Boolean(pullRequest.draft);
+		// GitHub reports `null` while it is still computing mergeability. That is not the same as
+		// "mergeable", and conflating the two is what let the summary contradict its own steps.
+		const mergeabilityUnknown = pullRequest.mergeable === null || pullRequest.mergeable === undefined;
+		const mergeable = pullRequest.mergeable === true && !hasConflicts;
 
 		const wrongVersion =
 			hasMilestone && !isTargetingRightVersion && targetingVersion[0]
 				? { currentVersion: version, targetVersion: targetingVersion[0] }
 				: undefined;
 
+		const mergeableMessage = () => {
+			if (mergeable) {
+				return undefined;
+			}
+			return mergeabilityUnknown ? 'GitHub is still computing mergeability — this will refresh shortly' : 'This PR is not mergeable';
+		};
+
 		const steps: QAStep[] = [
+			{
+				name: 'Ready for review',
+				passed: !isDraft,
+				message: isDraft ? 'This PR is still a draft' : undefined,
+			},
 			{
 				name: 'No merge conflicts',
 				passed: !hasConflicts,
@@ -128,7 +152,7 @@ export const runQAChecks = async (
 			{
 				name: 'Mergeable',
 				passed: mergeable,
-				message: !mergeable ? 'This PR is not mergeable' : undefined,
+				message: mergeableMessage(),
 			},
 			{
 				name: 'Has milestone or project',
@@ -144,12 +168,15 @@ export const runQAChecks = async (
 				name: 'Correct target version',
 				passed: !wrongVersion,
 				message: wrongVersion
-					? `Targeting wrong base: should target ${wrongVersion.targetVersion}, but targets ${wrongVersion.currentVersion}`
+					? `This PR is targeting the wrong base branch. It should target ${normalizeVersion(
+							wrongVersion.targetVersion,
+						)}, but it targets ${normalizeVersion(wrongVersion.currentVersion)}`
 					: undefined,
 			},
 		];
 
-		const readyToMerge = !hasConflicts && assured && Boolean(pullRequest.mergeable) && hasMilestone && !hasInvalidTitle && !wrongVersion;
+		// Derived from the same values the steps render, so the two can never disagree.
+		const readyToMerge = steps.every((step) => step.passed);
 
 		const newLabels = [...new Set([...currentLabels, 'stat: ready to merge', 'stat: conflict', 'Invalid PR Title'])].filter((label) => {
 			if (label === 'stat: conflict') return hasConflicts;
@@ -165,6 +192,8 @@ export const runQAChecks = async (
 			hasConflicts,
 			assured,
 			mergeable,
+			mergeabilityUnknown,
+			isDraft,
 			hasMilestone,
 			hasInvalidTitle,
 			wrongVersion,
@@ -182,19 +211,57 @@ export const runQAChecks = async (
 
 const CHECK_RUN_NAME = 'Dionisio QA';
 
-export function formatCheckRunOutput(result: QAChecksResult): { title: string; summary: string } {
-	const status = result.readyToMerge ? 'success' : 'failure';
-	const title = result.readyToMerge ? 'Everything is fine — ready to merge' : 'Some checks did not pass';
+export type CheckConclusion = 'success' | 'failure' | 'neutral';
 
-	const stepLines = result.steps.map((step) => {
+export interface CheckVerdict {
+	conclusion: CheckConclusion;
+	title: string;
+	steps: QAStep[];
+}
+
+const reviewStep = (hasReviews: boolean): QAStep => ({
+	name: 'Reviewed',
+	passed: hasReviews,
+	message: hasReviews ? undefined : 'This PR has not been reviewed yet',
+});
+
+/**
+ * The single place a conclusion is decided. Everything user-facing renders from the verdict,
+ * so the badge, the title and the step list cannot drift apart.
+ *
+ * Invariant: `conclusion === 'success'` if and only if every step passed.
+ */
+export const buildCheckVerdict = (result: QAChecksResult, gates: { hasReviews: boolean }): CheckVerdict => {
+	const steps = [...result.steps, reviewStep(gates.hasReviews)];
+
+	if (result.isDraft) {
+		return { conclusion: 'neutral', title: 'Draft — not ready for review', steps };
+	}
+
+	if (!gates.hasReviews) {
+		return { conclusion: 'neutral', title: 'Waiting for reviews', steps };
+	}
+
+	if (result.mergeabilityUnknown) {
+		return { conclusion: 'neutral', title: 'Waiting for GitHub to compute mergeability', steps };
+	}
+
+	return steps.every((step) => step.passed)
+		? { conclusion: 'success', title: 'Everything is fine — ready to merge', steps }
+		: { conclusion: 'failure', title: 'Some checks did not pass', steps };
+};
+
+export function formatCheckRunOutput(verdict: CheckVerdict): { title: string; summary: string } {
+	const stepLines = verdict.steps.map((step) => {
 		const icon = step.passed ? '✅' : '❌';
 		const msg = step.message ? ` — ${step.message}` : '';
 		return `- ${icon} **${step.name}**${msg}`;
 	});
 
-	const summary = [`**Conclusion:** ${status}`, '', '### Steps', ...stepLines].join('\n');
-
-	return { title, summary };
+	return {
+		title: verdict.title,
+		summary: [`**Conclusion:** ${verdict.conclusion}`, '', '### Steps', ...stepLines].join('\n'),
+	};
 }
 
 export { CHECK_RUN_NAME };

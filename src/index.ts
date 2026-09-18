@@ -5,7 +5,8 @@ import { handleBackport } from './handleBackport';
 import { run } from './Queue';
 import { handleRebase } from './handleRebase';
 import { handleJira, isJiraTaskKey } from './handleJira';
-import { runQAChecks, formatCheckRunOutput, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
+import { runQAChecks, formatCheckRunOutput, buildCheckVerdict, CHECK_RUN_NAME, type PullRequestForQA } from './qaChecks';
+import { getPullRequestWithMergeability } from './pullRequest';
 import { enforceChangesetMilestone } from './checkChangesets';
 import { isExternalContributor } from './isExternalContributor';
 import { eventLogger, type Log } from './logger';
@@ -34,10 +35,11 @@ export = (app: Probot) => {
 			applyLabels(
 				{
 					...pr.data,
+					url: pr.data.html_url,
 					milestone: pr.data.milestone?.title,
 				},
-				pr.data.head.repo?.owner.login ?? pr.data.base.repo.owner.login,
-				pr.data.head.repo?.name ?? pr.data.base.repo.name,
+				pr.data.base.repo.owner.login,
+				pr.data.base.repo.name,
 				pr.data.base.ref,
 				context,
 				log,
@@ -59,28 +61,28 @@ export = (app: Probot) => {
 				return;
 			}
 
-			const { repo: ctxRepo } = context.payload.pull_request.head;
+			const { owner, repo } = context.repo();
+			const { base, head, number } = context.payload.pull_request;
 
-			if (!ctxRepo || !ctxRepo.owner || !ctxRepo.name) {
-				return;
-			}
+			// The event payload reports mergeability as null while GitHub is still computing it,
+			// and `url` is the API url, which the projects lookup cannot resolve.
+			const fullPr = await getPullRequestWithMergeability(context.octokit, { owner, repo, pull_number: number }, log);
 
-			await run(String(context.payload.pull_request.number), () =>
+			await run(String(number), () =>
 				applyLabels(
 					{
-						...context.payload.pull_request,
-						milestone: context.payload.pull_request.milestone?.title,
+						...fullPr.data,
+						url: fullPr.data.html_url,
+						milestone: fullPr.data.milestone?.title,
 					},
-					ctxRepo.owner.login,
-					ctxRepo.name,
-					context.payload.pull_request.head.ref,
+					base.repo.owner.login,
+					base.repo.name,
+					base.ref,
 					context,
 					log,
 				),
 			);
 
-			const { owner, repo } = context.repo();
-			const { head, number } = context.payload.pull_request;
 			await runDionisioQACheckForRef(context.octokit, owner, repo, head.sha, head.ref, context.id, log, [{ number }]);
 		},
 	);
@@ -500,7 +502,7 @@ export = (app: Probot) => {
 		}
 
 		const [fullPr, reviews] = await Promise.all([
-			octokit.pulls.get({ owner: baseOwner, repo: baseRepo, pull_number: prNumber }),
+			getPullRequestWithMergeability(octokit, { owner: baseOwner, repo: baseRepo, pull_number: prNumber }, log),
 			octokit.paginate(octokit.pulls.listReviews, { owner: baseOwner, repo: baseRepo, pull_number: prNumber, per_page: 100 }),
 		]);
 
@@ -528,7 +530,8 @@ export = (app: Probot) => {
 		}
 
 		const prForQA: PullRequestForQA = {
-			mergeable: fullPr.data.mergeable ?? undefined,
+			mergeable: fullPr.data.mergeable,
+			draft: fullPr.data.draft,
 			labels: fullPr.data.labels.map((l) => ({ name: (l as { name: string }).name })),
 			mergeable_state: fullPr.data.mergeable_state ?? 'unknown',
 			milestone: fullPr.data.milestone?.title,
@@ -555,29 +558,9 @@ export = (app: Probot) => {
 			return;
 		}
 
-		const { title, summary } = formatCheckRunOutput(result);
-		let conclusion: 'success' | 'failure' | 'neutral';
-		let finalTitle = title;
+		const verdict = buildCheckVerdict(result, { hasReviews });
 
-		if (!hasReviews) {
-			conclusion = 'neutral';
-			finalTitle = 'Waiting for reviews';
-		} else {
-			conclusion = result.readyToMerge ? 'success' : 'failure';
-		}
-
-		await upsertCheckRun(
-			octokit,
-			repoParams,
-			headSha,
-			startTime,
-			conclusion,
-			{
-				title: finalTitle,
-				summary,
-			},
-			log,
-		);
+		await upsertCheckRun(octokit, repoParams, headSha, startTime, verdict.conclusion, formatCheckRunOutput(verdict), log);
 	}
 
 	async function runDionisioQACheck(context: Context<'check_suite.requested' | 'check_suite.rerequested'>) {
