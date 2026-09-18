@@ -1,0 +1,32 @@
+src/pullRequest.ts
+  s_a38068632aee8a::t_a1838e146d0820 4-5
+test/qaChecks.test.ts
+  s_a38068632aee8a::t_943cdb765a3ed9 1-9
+  s_a38068632aee8a::t_da50d85e85eb73 115-135
+src/index.ts
+  s_a38068632aee8a::t_b8c7de219e9dfb 8-16,23-29,48,584-589,598
+  s_a38068632aee8a::t_3eac9ad1162255 472,476-480,512,559-560,562-564,574-581
+  s_a38068632aee8a::t_6fb622b2a52d59 537-544,548
+  s_a38068632aee8a::t_8c58e88fe6b81a 669,675,680
+  s_a38068632aee8a::t_5fb43ffa2017a8 89-92,94,97-99,109-113
+  s_a38068632aee8a::t_a958094bc88885 64-74,590-597
+  s_a38068632aee8a::t_9098c445356339 549
+src/qaChecks.ts
+  s_a38068632aee8a::t_57af968b96ae45 28-39,165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a9b8e270797d0a5a9c83108e1a06c682d209edb9",
+  "prompts": {},
+  "sessions": {
+    "s_a38068632aee8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e52eeb28-abef-4ade-9a5f-2a6abbee67b7",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Diego Sampaio <chinello@gmail.com>"
+    }
+  }
+}
